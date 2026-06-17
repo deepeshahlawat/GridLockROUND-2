@@ -74,17 +74,17 @@ print(f"  Dropped null start_datetime rows: {before - len(df)}")
 print(f"  Shape after purge: {df.shape}")
 
 # =============================================================================
-# STEP 2 — THE MAD TIMESTAMP FIX  (engineer Target_Duration_Mins)
+# STEP 2 — TIMESTAMP FIX & TARGET ENGINEERING
 # =============================================================================
-print("\n[Step 2] MAD Timestamp Fix …")
+print("\n[Step 2] Timestamp Fix & Target Engineering …")
 
 # 2-A  Parse datetimes (UTC-aware → tz-naive for arithmetic simplicity)
 for col in ["start_datetime", "modified_datetime", "closed_datetime"]:
     if col in df.columns:
-        df[col] = pd.to_datetime(df[col], utc=True, errors="coerce")
+        df[col] = pd.to_datetime(df[col], format="mixed", utc=True, errors="coerce")
         df[col] = df[col].dt.tz_localize(None)   # strip tz → naive
 
-# 2-B  Raw duration in minutes
+# 2-B  Raw duration in minutes (prefer closed_datetime, fall back to modified_datetime)
 def raw_duration(row):
     start = row["start_datetime"]
     if pd.isnull(start):
@@ -93,53 +93,44 @@ def raw_duration(row):
           else row.get("modified_datetime")
     if pd.isnull(end):
         return np.nan
-    delta = (end - start).total_seconds() / 60
-    return delta if delta >= 0 else np.nan   # negative = data error → NaN
+    return (end - start).total_seconds() / 60
 
 df["Raw_Duration_Mins"] = df.apply(raw_duration, axis=1)
 print(f"  Raw_Duration_Mins — median: {df['Raw_Duration_Mins'].median():.1f} min  "
       f"max: {df['Raw_Duration_Mins'].max():.1f} min  "
       f"nulls: {df['Raw_Duration_Mins'].isna().sum()}")
 
-# 2-C  MAD clip per event_cause
-def get_cap(cause):
-    """Return the hard cap (minutes) for a given cause label."""
-    if pd.isnull(cause):
-        return CAUSE_CAPS["default"]
-    cause_lower = str(cause).lower().strip()
-    for key, cap in CAUSE_CAPS.items():
-        if key in cause_lower:
-            return cap
-    return CAUSE_CAPS["default"]
+# 2-C  Kill data entry errors (closed_datetime entered before start_datetime)
+neg_count = (df["Raw_Duration_Mins"] < 0).sum()
+df = df[df["Raw_Duration_Mins"] >= 0].copy()
+print(f"  Dropped {neg_count} rows with negative duration "
+      f"(cops entering closed_time before start_time)")
 
-def mad_clip(group):
-    """Clip durations in a group using Median + 3*MAD threshold."""
-    vals = group["Raw_Duration_Mins"].dropna()
-    if len(vals) < 5:               # too few rows → just use the hard cap
-        cap = get_cap(group.name)
-        return group["Raw_Duration_Mins"].clip(upper=cap)
+# 2-D  Acute incident filter — drop civic infrastructure maintenance tickets
+#      These are NOT clearance events; their durations are unclosed admin lags
+ACUTE_CAUSES = [
+    "vehicle_breakdown", "accident", "congestion",
+    "tree_fall", "procession", "protest",
+]
+before = len(df)
+df = df[df["event_cause"].isin(ACUTE_CAUSES)].copy()
+print(f"  Filtered out {before - len(df)} infrastructure/maintenance tickets. "
+      f"Keeping {len(df)} acute traffic dispatch events.")
 
-    median = vals.median()
-    mad    = (vals - median).abs().median()
-    threshold = median + 3 * mad
-
-    cap = get_cap(group.name)
-    final_cap = min(threshold, cap) if threshold < cap else cap   # never exceed hard cap
-
-    return group["Raw_Duration_Mins"].clip(upper=final_cap)
-
-if "event_cause" in df.columns:
-    df["Target_Duration_Mins"] = (
-        df.groupby("event_cause", group_keys=False)
-          .apply(mad_clip)
-    )
-else:
-    # Fallback: global MAD clip if event_cause is missing
-    vals   = df["Raw_Duration_Mins"].dropna()
-    median = vals.median()
-    mad    = (vals - median).abs().median()
-    df["Target_Duration_Mins"] = df["Raw_Duration_Mins"].clip(upper=median + 3 * mad)
-
+# 2-E  Apply p95-informed hard caps per cause (data is clean — no MAD needed)
+CAUSE_CAPS = {
+    "vehicle_breakdown": 180,   # p95 = 124 min
+    "accident":          180,   # p95 = 110 min
+    "congestion":        240,   # p95 = 153 min
+    "procession":        240,
+    "protest":           120,
+    "tree_fall":         360,   # sawing + clearing takes longer
+}
+df["Target_Duration_Mins"] = df.apply(
+    lambda row: min(row["Raw_Duration_Mins"],
+                    CAUSE_CAPS.get(row["event_cause"], 180)),
+    axis=1,
+)
 print(f"  Target_Duration_Mins — median: {df['Target_Duration_Mins'].median():.1f} min  "
       f"max: {df['Target_Duration_Mins'].max():.1f} min  "
       f"nulls: {df['Target_Duration_Mins'].isna().sum()}")
