@@ -1,0 +1,47 @@
+Column,ColType,Dtype,Null_Pct,Unique,Recommendation
+id,ID/Key,object,0.0,8173,DROP for ML
+event_type,Categorical,object,0.0,2,Ready / Encode
+latitude,Geo,float64,0.0,8014,Ready / Encode
+longitude,Geo,float64,0.0,7993,Ready / Encode
+endlatitude,Geo,float64,2.1,685,Impute (KNN/median/mode)
+endlongitude,Geo,float64,2.1,685,Impute (KNN/median/mode)
+address,Text,object,0.0,3089,DROP or NLP
+end_address,Text,object,91.6,561,DROP or NLP
+event_cause,Categorical,object,0.0,17,Ready / Encode
+requires_road_closure,Boolean,bool,0.0,2,Ready / Encode
+start_datetime,DateTime,"datetime64[ns, UTC]",1.4,7971,Impute (KNN/median/mode)
+end_datetime,DateTime,"datetime64[ns, UTC]",94.2,444,DROP or flag-encode
+status,Categorical,object,0.0,3,Ready / Encode
+authenticated,Boolean,object,0.0,2,Ready / Encode
+modified_datetime,DateTime,"datetime64[ns, UTC]",0.0,8173,Ready / Encode
+map_file,Unknown,float64,100.0,0,DROP or flag-encode
+direction,Categorical,object,99.5,8,DROP or flag-encode
+description,Text,object,16.6,5542,DROP or NLP
+veh_type,Categorical,object,40.2,10,Impute (median/mode/Unknown)
+veh_no,Numeric,object,40.2,4212,Impute (median/mode/Unknown)
+corridor,Categorical,object,0.2,22,Impute (KNN/median/mode)
+priority,Categorical,object,0.0,2,Ready / Encode
+cargo_material,Categorical,object,96.6,138,DROP or flag-encode
+reason_breakdown,Categorical,object,96.6,193,DROP or flag-encode
+age_of_truck,Numeric,float64,96.6,47,DROP or flag-encode
+created_date,DateTime,"datetime64[ns, UTC]",0.0,8171,Ready / Encode
+route_path,Text,object,98.3,83,DROP or NLP
+client_id,ID/Key,int64,0.0,2,DROP for ML
+created_by_id,ID/Key,object,0.0,1898,DROP for ML
+last_modified_by_id,ID/Key,object,0.0,304,DROP for ML
+assigned_to_police_id,ID/Key,object,98.4,62,DROP for ML
+citizen_accident_id,ID/Key,object,98.4,77,DROP for ML
+comment,Text,float64,100.0,0,DROP or NLP
+police_station,Categorical,object,0.0,54,Ready / Encode
+meta_data,Text,float64,100.0,0,DROP or NLP
+kgid,ID/Key,object,3.2,1853,DROP for ML
+resolved_at_address,Text,object,99.1,58,DROP or NLP
+resolved_at_latitude,Geo,float64,99.1,74,DROP or flag-encode
+resolved_at_longitude,Geo,float64,99.1,74,DROP or flag-encode
+closed_by_id,ID/Key,object,61.6,1225,DROP for ML
+closed_datetime,DateTime,"datetime64[ns, UTC]",61.6,3141,Impute (median/mode/Unknown)
+resolved_by_id,ID/Key,object,99.1,42,DROP for ML
+resolved_datetime,DateTime,"datetime64[ns, UTC]",99.1,74,DROP or flag-encode
+gba_identifier,ID/Key,object,57.9,5,DROP for ML
+zone,Categorical,object,57.9,10,Impute (median/mode/Unknown)
+junction,Categorical,object,69.3,294,Impute (median/mode/Unknown)

@@ -1,0 +1,47 @@
+Column,Dtype,Non_Null,Null_Count,Null_Pct,Unique,Sample
+id,object,8173,0,0.0,8173,FKID000000
+event_type,object,8173,0,0.0,2,unplanned
+latitude,float64,8173,0,0.0,8014,13.0400041
+longitude,float64,8173,0,0.0,7993,77.5180991
+endlatitude,float64,8004,169,2.07,685,0.0
+endlongitude,float64,8004,169,2.07,685,0.0
+address,object,8170,3,0.04,3089,"Mumbai Bengaluru Highway, Jalahalli Cross Junction, Peenya, Bengaluru, Karnataka. Pin-560058 (India)"
+end_address,object,687,7486,91.59,561,"Sankey Road, Palace Orchard Upper, Sadashiva Nagar, Bengaluru, Karnataka. Pin-560080 (India)"
+event_cause,object,8173,0,0.0,17,vehicle_breakdown
+requires_road_closure,bool,8173,0,0.0,2,False
+start_datetime,"datetime64[ns, UTC]",8057,116,1.42,7971,2024-03-07 17:01:48.111000+00:00
+end_datetime,"datetime64[ns, UTC]",475,7698,94.19,444,2024-02-12 14:05:46+00:00
+status,object,8173,0,0.0,3,closed
+authenticated,object,8173,0,0.0,2,yes
+modified_datetime,"datetime64[ns, UTC]",8173,0,0.0,8173,2024-03-07 19:35:47.871698+00:00
+map_file,float64,0,8173,100.0,0,ALL NULL
+direction,object,43,8130,99.47,8,north
+description,object,6813,1360,16.64,5542,s m circle in coming  man track
+veh_type,object,4887,3286,40.21,10,lcv
+veh_no,object,4886,3287,40.22,4212,FKN00GL0000
+corridor,object,8153,20,0.24,22,Tumkur Road
+priority,object,8171,2,0.02,2,High
+cargo_material,object,276,7897,96.62,138,goods
+reason_breakdown,object,276,7897,96.62,193,clutch plate problem
+age_of_truck,float64,276,7897,96.62,47,2021.0
+created_date,"datetime64[ns, UTC]",8171,2,0.02,8171,2024-03-07 17:03:51.164032+00:00
+route_path,object,137,8036,98.32,83,[]
+client_id,int64,8173,0,0.0,2,1
+created_by_id,object,8171,2,0.02,1898,FKUSR00000
+last_modified_by_id,object,8170,3,0.04,304,FKUSR00001
+assigned_to_police_id,object,128,8045,98.43,62,FKUSR00005
+citizen_accident_id,object,128,8045,98.43,77,FKUSR00006
+comment,float64,0,8173,100.0,0,ALL NULL
+police_station,object,8173,0,0.0,54,Peenya
+meta_data,float64,0,8173,100.0,0,ALL NULL
+kgid,object,7914,259,3.17,1853,FKKG000000
+resolved_at_address,object,74,8099,99.09,58,"19th Main Road, Heavie Halcyon, Agara, HSR Layout, Bengaluru, Karnataka. Pin-560102 (India)"
+resolved_at_latitude,float64,74,8099,99.09,74,12.9218755
+resolved_at_longitude,float64,74,8099,99.09,74,77.6451585
+closed_by_id,object,3141,5032,61.57,1225,FKUSR00003
+closed_datetime,"datetime64[ns, UTC]",3141,5032,61.57,3141,2024-01-30 04:56:03.281509+00:00
+resolved_by_id,object,74,8099,99.09,42,FKUSR00002
+resolved_datetime,"datetime64[ns, UTC]",74,8099,99.09,74,2024-01-30 04:17:46.828355+00:00
+gba_identifier,object,3444,4729,57.86,5,Bengaluru Central Corporation
+zone,object,3444,4729,57.86,10,Central Zone 2
+junction,object,2510,5663,69.29,294,UrvashiJunction
