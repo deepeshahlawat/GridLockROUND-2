@@ -1,0 +1,59 @@
+[
+  {
+    "title": "Incident #0 \u2014 vehicle_breakdown (CSV jurisdiction: Banaswadi)",
+    "event_cause": "vehicle_breakdown",
+    "s_risk": 1,
+    "prob_long_delay": 0.317,
+    "recommended_officers": 1,
+    "dispatch_station": "Banaswadi",
+    "distance_to_incident_km": 1.95,
+    "barricade_protocol": "Standard Cones",
+    "over_capacity_warning": false,
+    "diversion": {
+      "detour_extra_m": -0.0,
+      "diverted_route_length_m": 2209.0
+    },
+    "incident_location": {
+      "lat": 13.017835,
+      "lon": 77.6595083
+    }
+  },
+  {
+    "title": "Incident #1 \u2014 vehicle_breakdown (CSV jurisdiction: Shivajinagar)",
+    "event_cause": "vehicle_breakdown",
+    "s_risk": 2,
+    "prob_long_delay": 0.36,
+    "recommended_officers": 2,
+    "dispatch_station": "Shivajinagar",
+    "distance_to_incident_km": 0.22,
+    "barricade_protocol": "Standard Cones",
+    "over_capacity_warning": false,
+    "diversion": {
+      "detour_extra_m": -0.0,
+      "diverted_route_length_m": 2209.0
+    },
+    "incident_location": {
+      "lat": 12.9843032,
+      "lon": 77.6029397
+    }
+  },
+  {
+    "title": "Incident #2 \u2014 accident (CSV jurisdiction: Kengeri)",
+    "event_cause": "accident",
+    "s_risk": 3,
+    "prob_long_delay": 0.02,
+    "recommended_officers": 3,
+    "dispatch_station": "Kengeri",
+    "distance_to_incident_km": 2.79,
+    "barricade_protocol": "Type III MUTCD + Scene Cordon",
+    "over_capacity_warning": false,
+    "diversion": {
+      "detour_extra_m": -0.0,
+      "diverted_route_length_m": 2209.0
+    },
+    "incident_location": {
+      "lat": 12.89030403,
+      "lon": 77.48279024
+    }
+  }
+]
