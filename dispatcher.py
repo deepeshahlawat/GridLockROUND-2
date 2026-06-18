@@ -450,8 +450,10 @@ def run_real(n_samples: int = 5) -> None:
         }
 
         # Only wire in routing if this incident actually falls inside the
-        # diversion engine's known graph — otherwise node IDs are meaningless.
-        if diversion_graph is not None and diversion_graph.number_of_nodes() > 2:
+        # diversion engine's known graph area — otherwise nearest_node()
+        # silently snaps far-away incidents to a Koramangala junction,
+        # producing a geographically meaningless detour with no error raised.
+        if diversion_graph is not None and within_graph_bounds(diversion_graph, incident["lat"], incident["lon"]):
             inc_node = nearest_node(diversion_graph, incident["lat"], incident["lon"])
             others = [n for n in diversion_graph.nodes if n != inc_node]
             if len(others) >= 2:

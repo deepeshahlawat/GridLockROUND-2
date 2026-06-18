@@ -9,10 +9,6 @@
     "distance_to_incident_km": 1.95,
     "barricade_protocol": "Standard Cones",
     "over_capacity_warning": false,
-    "diversion": {
-      "detour_extra_m": -0.0,
-      "diverted_route_length_m": 2209.0
-    },
     "incident_location": {
       "lat": 13.017835,
       "lon": 77.6595083
@@ -28,10 +24,6 @@
     "distance_to_incident_km": 0.22,
     "barricade_protocol": "Standard Cones",
     "over_capacity_warning": false,
-    "diversion": {
-      "detour_extra_m": -0.0,
-      "diverted_route_length_m": 2209.0
-    },
     "incident_location": {
       "lat": 12.9843032,
       "lon": 77.6029397
@@ -47,10 +39,6 @@
     "distance_to_incident_km": 2.79,
     "barricade_protocol": "Type III MUTCD + Scene Cordon",
     "over_capacity_warning": false,
-    "diversion": {
-      "detour_extra_m": -0.0,
-      "diverted_route_length_m": 2209.0
-    },
     "incident_location": {
       "lat": 12.89030403,
       "lon": 77.48279024
