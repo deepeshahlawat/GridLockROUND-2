@@ -13,16 +13,21 @@ Run:
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 
 import streamlit as st
 
+# Directory containing this file — used to resolve bundled image assets
+# regardless of the working directory `streamlit run` is launched from.
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # ── Page config — MUST be the very first Streamlit call ─────────────────────
 st.set_page_config(
-    page_title="ASTraM-Nexus | Traffic Command Center",
+    page_title="ASTraM-Nexus | Bengaluru Traffic Police",
     layout="wide",
-    page_icon="🚨",
+    page_icon="🚓",
     initial_sidebar_state="collapsed",
 )
 
@@ -60,158 +65,217 @@ except ImportError:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  GLOBAL CSS — dark military aesthetic
+#  GLOBAL CSS — Karnataka State Police / BTP civic design system
+#
+#  Palette is drawn from real BTP/Karnataka Police visual identity:
+#    Navy   #0a2540 / #123a63  — peak-cap & uniform navy, header bar
+#    Red    #a31f24 / #7d1418  — Gandaberunda state-emblem shield red
+#    Green  #1a7a3c            — traffic-signal "clear / pass" semantics
+#    Amber  #c87f00            — traffic-signal "caution" semantics
+#    Gold   #b6862c            — restrained rank-braid accent, dividers only
+#    Paper  #f4f6f8 / #ffffff  — e-governance portal background (light, not dark)
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Kannada:wght@400;600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+html, body, [class*="css"] { font-family: 'Inter', 'Noto Sans Kannada', sans-serif; }
 
-/* ── Background ── */
-.stApp { background: #07111b; color: #c9d6df; }
-section[data-testid="stSidebar"] { background: #0b1a27; }
+/* ── Background — light civic portal, not dark console ── */
+.stApp { background: #eef1f4; color: #1c2b3a; }
+section[data-testid="stSidebar"] { background: #0a2540; }
+.block-container { padding-top: 1.4rem !important; }
 
 /* ── Tab strip ── */
 .stTabs [data-baseweb="tab-list"] {
-    background: #0b1a27; border-radius: 8px; padding: 4px; gap: 4px;
+    background: #ffffff; border-radius: 6px; padding: 4px; gap: 4px;
+    border: 1px solid #d7dde3;
 }
 .stTabs [data-baseweb="tab"] {
-    color: #4a6a82; font-weight: 600; letter-spacing: .04em;
-    border-radius: 6px; padding: 8px 22px; border: none; background: transparent;
+    color: #5b6b7a; font-weight: 600; letter-spacing: .02em;
+    border-radius: 4px; padding: 9px 22px; border: none; background: transparent;
+    font-size: 14px;
 }
 .stTabs [aria-selected="true"] {
-    background: #0f2540 !important;
-    color: #00d4ff !important;
-    border-bottom: 2px solid #00d4ff !important;
+    background: #0a2540 !important;
+    color: #ffffff !important;
+    border-bottom: 3px solid #b6862c !important;
 }
 
 /* ── Metric cards ── */
 [data-testid="metric-container"] {
-    background: #0b1a27; border: 1px solid #183650;
-    border-radius: 10px; padding: 16px !important;
+    background: #ffffff; border: 1px solid #d7dde3; border-left: 4px solid #0a2540;
+    border-radius: 6px; padding: 16px !important;
+    box-shadow: 0 1px 2px rgba(10,37,64,.06);
 }
 [data-testid="metric-container"] label {
-    color: #4a6a82 !important; font-size: 11px !important;
-    letter-spacing: .08em; text-transform: uppercase;
+    color: #5b6b7a !important; font-size: 11px !important;
+    letter-spacing: .07em; text-transform: uppercase; font-weight: 600;
 }
 [data-testid="metric-container"] [data-testid="stMetricValue"] {
-    color: #e8f4fd !important;
-    font-family: 'Share Tech Mono', monospace !important;
-    font-size: 26px !important;
+    color: #0a2540 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 25px !important; font-weight: 600 !important;
 }
 [data-testid="stMetricDelta"] { font-size: 11px !important; }
 
 /* ── Input ── */
 .stTextInput input, .stNumberInput input {
-    background: #0b1a27 !important; border: 1px solid #183650 !important;
-    color: #c9d6df !important; border-radius: 6px !important;
+    background: #ffffff !important; border: 1px solid #c5ccd4 !important;
+    color: #1c2b3a !important; border-radius: 5px !important;
 }
 .stTextInput input:focus, .stNumberInput input:focus {
-    border-color: #00d4ff !important;
-    box-shadow: 0 0 0 2px rgba(0,212,255,.15) !important;
+    border-color: #0a2540 !important;
+    box-shadow: 0 0 0 2px rgba(10,37,64,.12) !important;
 }
 
 /* ── Buttons ── */
 .stButton button[kind="primary"] {
-    background: linear-gradient(135deg, #005f8e, #00b4d8) !important;
-    color: #fff !important; border: none !important; border-radius: 6px !important;
-    font-weight: 700 !important; letter-spacing: .06em !important;
-    transition: opacity .2s;
+    background: #0a2540 !important;
+    color: #fff !important; border: none !important; border-radius: 5px !important;
+    font-weight: 600 !important; letter-spacing: .03em !important;
+    transition: background .2s;
 }
-.stButton button[kind="primary"]:hover { opacity: .85; }
+.stButton button[kind="primary"]:hover { background: #123a63 !important; }
 .stButton button:not([kind="primary"]) {
-    background: #0b1a27 !important; color: #00d4ff !important;
-    border: 1px solid #00d4ff !important; border-radius: 6px !important; font-weight: 600 !important;
+    background: #ffffff !important; color: #0a2540 !important;
+    border: 1px solid #0a2540 !important; border-radius: 5px !important; font-weight: 600 !important;
 }
 
 /* ── Alerts ── */
-.stAlert { border-radius: 8px !important; border-left-width: 4px !important; }
+.stAlert { border-radius: 6px !important; border-left-width: 4px !important; }
 
 /* ── Typography ── */
-h3 { color: #00d4ff !important; font-size: 13px !important; letter-spacing: .07em; text-transform: uppercase; }
-hr { border-color: #183650 !important; }
+h3 { color: #0a2540 !important; font-size: 13.5px !important; letter-spacing: .04em; text-transform: uppercase; font-weight: 700 !important; }
+h4 { color: #0a2540 !important; }
+hr { border-color: #d7dde3 !important; }
 
 /* ── Code / JSON ── */
 .stCodeBlock pre {
-    background: #050d14 !important; border: 1px solid #183650 !important;
-    border-radius: 8px !important; font-family: 'Share Tech Mono', monospace !important;
-    font-size: 13px !important; color: #00ff9d !important;
+    background: #0a2540 !important; border: 1px solid #0a2540 !important;
+    border-radius: 6px !important; font-family: 'JetBrains Mono', monospace !important;
+    font-size: 12.5px !important; color: #d4e3f0 !important;
 }
 
 /* ── Progress ── */
-.stProgress > div > div { background: linear-gradient(90deg,#005f8e,#00d4ff) !important; }
+.stProgress > div > div { background: #0a2540 !important; }
 
 /* ── DataFrame ── */
-.stDataFrame { border: 1px solid #183650; border-radius: 8px; }
+.stDataFrame { border: 1px solid #d7dde3; border-radius: 6px; }
 
-/* ── Custom components ── */
+/* ════ Official header ════ */
+.gov-strip {
+    background: #0a2540; color: #cdd9e5; font-size: 11px; letter-spacing: .03em;
+    padding: 5px 22px; border-radius: 6px 6px 0 0; display: flex;
+    justify-content: space-between; font-family: 'Inter', sans-serif;
+}
 .cmd-header {
-    background: linear-gradient(135deg, #0b1a27 0%, #0d2035 100%);
-    border: 1px solid #183650; border-radius: 10px;
-    padding: 18px 24px; margin-bottom: 20px;
-    display: flex; align-items: center; gap: 16px;
+    background: #ffffff; border: 1px solid #d7dde3; border-top: none;
+    border-radius: 0 0 8px 8px; padding: 18px 24px 16px; margin-bottom: 22px;
+    display: flex; align-items: center; gap: 18px;
+    box-shadow: 0 2px 6px rgba(10,37,64,.07);
+}
+.cmd-emblem { flex-shrink: 0; }
+.cmd-title-block { flex-grow: 1; }
+.cmd-title-kn {
+    font-family: 'Noto Sans Kannada', sans-serif; font-size: 14px;
+    color: #5b6b7a; margin: 0 0 1px; font-weight: 600;
+}
+.cmd-title {
+    font-family: 'Inter', sans-serif; font-size: 21px; font-weight: 800;
+    color: #0a2540; letter-spacing: .01em; margin: 0;
+}
+.cmd-sub {
+    font-size: 12px; color: #5b6b7a; letter-spacing: .02em; margin: 3px 0 0;
+    font-weight: 500;
+}
+.cmd-designation {
+    font-size: 11px; color: #b6862c; letter-spacing: .04em; margin: 2px 0 0;
+    font-weight: 700; text-transform: uppercase;
+}
+.live-badge {
+    display: flex; align-items: center; gap: 7px; background: #eaf6ee;
+    border: 1px solid #1a7a3c; color: #1a7a3c; padding: 6px 14px;
+    border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: .05em;
+    flex-shrink: 0;
 }
 .live-dot {
-    width: 10px; height: 10px; background: #00ff9d;
+    width: 8px; height: 8px; background: #1a7a3c;
     border-radius: 50%; flex-shrink: 0;
     animation: pulse 1.6s ease-in-out infinite;
 }
 @keyframes pulse {
-    0%,100% { opacity:1; box-shadow:0 0 0 0 rgba(0,255,157,.6); }
-    50%      { opacity:.7; box-shadow:0 0 0 7px rgba(0,255,157,0); }
+    0%,100% { opacity:1; box-shadow:0 0 0 0 rgba(26,122,60,.5); }
+    50%      { opacity:.6; box-shadow:0 0 0 6px rgba(26,122,60,0); }
 }
-.cmd-title {
-    font-family: 'Share Tech Mono', monospace; font-size: 22px;
-    color: #e8f4fd; letter-spacing: .08em; margin: 0;
-}
-.cmd-sub { font-size: 12px; color: #4a6a82; letter-spacing: .06em; margin: 0; }
 
+/* ════ Components ════ */
 .dispatch-card {
-    background: #0b1a27; border: 1px solid #183650;
-    border-radius: 10px; padding: 18px; font-size: 14px; line-height: 2.1; color: #c9d6df;
+    background: #ffffff; border: 1px solid #d7dde3; border-left: 4px solid #0a2540;
+    border-radius: 6px; padding: 18px; font-size: 14px; line-height: 2.1; color: #1c2b3a;
 }
-.dispatch-card strong { color: #00d4ff; }
+.dispatch-card strong { color: #0a2540; }
 
 .route-pill {
-    display: inline-block; background: rgba(0,212,255,.08);
-    border: 1px solid #00d4ff; color: #00d4ff; border-radius: 20px;
+    display: inline-block; background: #eef3f8;
+    border: 1px solid #0a2540; color: #0a2540; border-radius: 16px;
     padding: 3px 13px; font-size: 12px; margin: 3px;
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'JetBrains Mono', monospace; font-weight: 500;
 }
 .anomaly-box {
-    background: rgba(220,38,38,.10); border: 1px solid #dc2626;
-    border-radius: 8px; padding: 16px; margin: 12px 0;
-    color: #fca5a5; font-size: 14px; line-height: 1.7;
+    background: #fbeceb; border: 1px solid #a31f24; border-left: 4px solid #a31f24;
+    border-radius: 6px; padding: 16px; margin: 12px 0;
+    color: #7d1418; font-size: 14px; line-height: 1.7;
 }
 .pass-box {
-    background: rgba(0,200,100,.07); border: 1px solid #00c864;
-    border-radius: 8px; padding: 16px; margin: 12px 0;
-    color: #6ee7b7; font-size: 14px; line-height: 1.7;
+    background: #eaf6ee; border: 1px solid #1a7a3c; border-left: 4px solid #1a7a3c;
+    border-radius: 6px; padding: 16px; margin: 12px 0;
+    color: #14542b; font-size: 14px; line-height: 1.7;
 }
 .idle-panel {
-    background: #0b1a27; border: 1px dashed #183650; border-radius: 10px;
-    padding: 36px; text-align: center; color: #334d60; margin-top: 12px;
+    background: #ffffff; border: 1px dashed #c5ccd4; border-radius: 8px;
+    padding: 36px; text-align: center; color: #5b6b7a; margin-top: 12px;
 }
 .checklist-row {
     display: flex; justify-content: space-between;
-    padding: 9px 14px; background: #0b1a27; border-radius: 6px;
+    padding: 9px 14px; background: #ffffff; border: 1px solid #e3e8ec; border-radius: 5px;
     margin-bottom: 5px; font-size: 13px;
+}
+.section-tag {
+    display: inline-block; background: #0a2540; color: #fff; font-size: 10px;
+    font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    padding: 3px 10px; border-radius: 3px; margin-bottom: 10px;
 }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  HEADER
+#  HEADER — official bilingual command-center header
 # ════════════════════════════════════════════════════════════════════════════
-st.markdown("""
+_EMBLEM_SVG = """
+<svg width="52" height="52" viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="26" cy="26" r="25" fill="#0a2540" stroke="#b6862c" stroke-width="1.5"/>
+  <circle cx="26" cy="26" r="21" fill="none" stroke="#b6862c" stroke-width="0.75"/>
+  <path d="M26 13 L29 22 L38 22 L31 27.5 L33.5 36.5 L26 31 L18.5 36.5 L21 27.5 L14 22 L23 22 Z"
+        fill="#b6862c"/>
+  <circle cx="26" cy="26" r="3.4" fill="#a31f24" stroke="#fff" stroke-width="0.8"/>
+</svg>
+"""
+st.markdown(f"""
+<div class="gov-strip">
+  <span>GOVERNMENT OF KARNATAKA &nbsp;|&nbsp; ಕರ್ನಾಟಕ ಸರ್ಕಾರ</span>
+  <span>BENGALURU CITY TRAFFIC POLICE &nbsp;|&nbsp; ಬೆಂಗಳೂರು ನಗರ ಸಂಚಾರ ಪೊಲೀಸ್</span>
+</div>
 <div class="cmd-header">
-  <div class="live-dot"></div>
-  <div>
-    <p class="cmd-title">ASTraM-Nexus // TRAFFIC COMMAND CENTER</p>
-    <p class="cmd-sub">BENGALURU METROPOLITAN JURISDICTION &nbsp;•&nbsp; LIVE OPERATIONAL MODE</p>
+  <div class="cmd-emblem">{_EMBLEM_SVG}</div>
+  <div class="cmd-title-block">
+    <p class="cmd-title-kn">ಆಸ್ಟ್ರಾಮ್ ನೆಕ್ಸಸ್ — ಸಂಚಾರ ನಿಯಂತ್ರಣ ಕೇಂದ್ರ</p>
+    <p class="cmd-title">ASTraM-Nexus — Event-Driven Congestion Command Center</p>
+    <p class="cmd-sub">Office of the Joint Commissioner of Police (Traffic) &nbsp;•&nbsp; Bengaluru Metropolitan Jurisdiction</p>
+    <p class="cmd-designation">Actionable Intelligence for Sustainable Traffic Management</p>
   </div>
+  <div class="live-badge"><div class="live-dot"></div> LIVE OPERATIONAL</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -220,9 +284,9 @@ st.markdown("""
 #  TABS
 # ════════════════════════════════════════════════════════════════════════════
 tab1, tab2, tab3 = st.tabs([
-    "📡  Active Radar",
-    "🔄  Post-Event Audit",
-    "👁️  cyRoad Vision",
+    "📡  Incident Response",
+    "🔄  Post-Event Review",
+    "👁️  Ground Compliance",
 ])
 
 
@@ -401,7 +465,7 @@ def _build_folium_map(lat, lon, diversion, s_risk=1, event_cause="unknown", inci
     """
     import math
 
-    m = folium.Map(location=[lat, lon], zoom_start=15, tiles="CartoDB dark_matter")
+    m = folium.Map(location=[lat, lon], zoom_start=15, tiles="CartoDB positron")
 
     route_nodes = diversion.get("route", [])
     blocked_label = diversion.get("blocked_node", "Incident Location")
@@ -434,15 +498,15 @@ def _build_folium_map(lat, lon, diversion, s_risk=1, event_cause="unknown", inci
     # ── Blocked road: straight red dashed line through incident ──────────────
     folium.PolyLine(
         [[a_lat, a_lon], [lat, lon], [c_lat, c_lon]],
-        color="#ff3333", weight=5, opacity=0.75,
+        color="#a31f24", weight=5, opacity=0.8,
         dash_array="12 8",
         tooltip="🚫 BLOCKED: " + blocked_label,
     ).add_to(m)
 
-    # ── Diversion route: real road geometry in cyan ───────────────────────────
+    # ── Diversion route: real road geometry in navy ───────────────────────────
     folium.PolyLine(
         osrm_coords,
-        color="#00d4ff", weight=5, opacity=0.92,
+        color="#0a2540", weight=5, opacity=0.92,
         tooltip="✅ Diversion Route (Wardrop Equilibrium · OSRM road network)",
     ).add_to(m)
 
@@ -455,8 +519,7 @@ def _build_folium_map(lat, lon, diversion, s_risk=1, event_cause="unknown", inci
             location=p1,
             icon=folium.DivIcon(
                 html='<div style="transform:rotate(' + str(round(angle)) + 'deg);'
-                     'font-size:16px;color:#00d4ff;'
-                     'text-shadow:0 0 5px #00d4ff;'
+                     'font-size:16px;color:#0a2540;'
                      'margin:-9px 0 0 -7px;">&#10148;</div>',
                 icon_size=(18, 18),
                 icon_anchor=(9, 9),
@@ -466,14 +529,14 @@ def _build_folium_map(lat, lon, diversion, s_risk=1, event_cause="unknown", inci
     # ── Diversion entry point (start of detour) ───────────────────────────────
     folium.CircleMarker(
         [a_lat, a_lon], radius=7,
-        color="#00d4ff", fill=True, fill_color="#00d4ff", fill_opacity=0.9,
+        color="#0a2540", fill=True, fill_color="#0a2540", fill_opacity=0.9,
         tooltip="🔀 Diversion Start",
     ).add_to(m)
 
     # ── Diversion exit point (rejoin main road) — green ──────────────────────
     folium.CircleMarker(
         [c_lat, c_lon], radius=7,
-        color="#00ff88", fill=True, fill_color="#00ff88", fill_opacity=0.9,
+        color="#1a7a3c", fill=True, fill_color="#1a7a3c", fill_opacity=0.9,
         tooltip="✅ Rejoin Main Road",
     ).add_to(m)
 
@@ -482,8 +545,7 @@ def _build_folium_map(lat, lon, diversion, s_risk=1, event_cause="unknown", inci
         folium.Marker(
             location=[lat + dx * offset, lon + dy * offset],
             icon=folium.DivIcon(
-                html='<div style="font-size:20px;color:#ff3333;'
-                     'text-shadow:0 0 6px #ff0000;'
+                html='<div style="font-size:20px;color:#a31f24;'
                      'margin:-12px 0 0 -8px;">&#10006;</div>',
                 icon_size=(20, 20),
                 icon_anchor=(10, 10),
@@ -491,8 +553,8 @@ def _build_folium_map(lat, lon, diversion, s_risk=1, event_cause="unknown", inci
             tooltip="🚧 Barricade",
         ).add_to(m)
 
-    # ── Incident marker — colour-coded by s_risk ──────────────────────────────
-    risk_color  = {1: "#ffa500", 2: "#ff6b00", 3: "#ff2222"}.get(s_risk, "#ff4b4b")
+    # ── Incident marker — colour-coded by s_risk (traffic-signal semantics) ──
+    risk_color  = {1: "#c87f00", 2: "#d9651e", 3: "#a31f24"}.get(s_risk, "#a31f24")
     risk_label  = {1: "Minor", 2: "Moderate", 3: "CRITICAL"}.get(s_risk, "")
     popup_html  = (
         "<b>Incident</b><br>"
@@ -518,9 +580,10 @@ def _build_folium_map(lat, lon, diversion, s_risk=1, event_cause="unknown", inci
             location=[wlat, wlon],
             icon=folium.DivIcon(
                 html=(
-                    '<div style="background:rgba(13,26,40,0.85);border:1px solid #00d4ff;'
-                    'color:#00d4ff;font-size:10px;font-family:monospace;'
-                    'padding:2px 6px;border-radius:4px;white-space:nowrap;'
+                    '<div style="background:#ffffff;border:1px solid #0a2540;'
+                    'color:#0a2540;font-size:10px;font-family:Inter,sans-serif;font-weight:600;'
+                    'padding:2px 7px;border-radius:4px;white-space:nowrap;'
+                    'box-shadow:0 1px 3px rgba(10,37,64,.2);'
                     'margin-top:10px;">' + label + '</div>'
                 ),
                 icon_size=(120, 24),
@@ -534,14 +597,14 @@ def _build_folium_map(lat, lon, diversion, s_risk=1, event_cause="unknown", inci
 def _map_placeholder(lat: float, lon: float, diversion: dict):
     route = diversion.get("route", [])
     st.markdown(f"""
-<div style="background:#050d14;border:1px solid #183650;border-radius:10px;
-            padding:32px;color:#334d60;text-align:center;">
+<div style="background:#ffffff;border:1px dashed #c5ccd4;border-radius:8px;
+            padding:32px;color:#5b6b7a;text-align:center;">
   <p style="font-size:30px;margin:0">🗺️</p>
   <p style="font-size:13px;margin:10px 0 4px">
       Install <code>folium</code> &amp; <code>streamlit-folium</code> for the interactive map.<br>
       <code>pip install folium streamlit-folium</code>
   </p>
-  <hr style="border-color:#183650;margin:12px 0"/>
+  <hr style="border-color:#d7dde3;margin:12px 0"/>
   <p style="font-size:12px;margin:0">
       Blocked node: ({lat:.4f}, {lon:.4f})<br>
       Route: {' → '.join(route) if route else 'N/A'}
@@ -554,6 +617,7 @@ def _map_placeholder(lat: float, lon: float, diversion: dict):
 #  TAB 1 — ACTIVE RADAR
 # ════════════════════════════════════════════════════════════════════════════
 with tab1:
+    st.markdown('<span class="section-tag">Traffic Management</span>', unsafe_allow_html=True)
     st.markdown("#### Rapid Incident Triage — NLP → XGBoost → Wardrop Dispatch")
 
     # ── Input row ────────────────────────────────────────────────────────────
@@ -565,7 +629,7 @@ with tab1:
             label_visibility="collapsed",
         )
     with col_btn:
-        run_protocol = st.button("⚡ INITIATE PROTOCOL", use_container_width=True, type="primary")
+        run_protocol = st.button("Dispatch Analysis", use_container_width=True, type="primary")
 
     # ── Optional coordinate override ─────────────────────────────────────────
     with st.expander("📍 Override Incident Coordinates (optional)"):
@@ -707,21 +771,87 @@ with tab1:
         # ── Right: map ────────────────────────────────────────────────────
         with col_map:
             st.markdown("### Dynamic Diversion Map")
+
+            # ── Google Maps deep-link button ──────────────────────────────
+            _lat  = st.session_state.radar_lat
+            _lon  = st.session_state.radar_lon
+            _div  = result.get("diversion", {})
+            _risk = result.get("s_risk", 1)
+            _cause = result.get("event_cause", "unknown")
+            _desc  = st.session_state.radar_desc
+
+            import math as _math
+            _text_hash = sum(ord(c) * (i + 1) for i, c in enumerate(_desc[:40])) if _desc else 0
+            _seed  = (_lat * 1000 + _lon * 1000 + _text_hash) % 360
+            _br    = _math.radians(_seed)
+            _dx, _dy = _math.cos(_br), _math.sin(_br)
+            _scale = {1: 0.009, 2: 0.014, 3: 0.020}.get(_risk, 0.012)
+            _perp_dx, _perp_dy = -_dy, _dx
+
+            # Three points: entry → detour apex → exit
+            _a_lat = round(_lat - _dx * 0.004, 6)
+            _a_lon = round(_lon - _dy * 0.004, 6)
+            _b_lat = round(_lat + _perp_dx * _scale, 6)
+            _b_lon = round(_lon + _perp_dy * _scale, 6)
+            _c_lat = round(_lat + _dx * 0.004, 6)
+            _c_lon = round(_lon + _dy * 0.004, 6)
+
+            # Google Maps Directions URL — opens in browser or Maps app on mobile
+            # Origin = diversion entry, Destination = diversion exit,
+            # Waypoints = detour apex (forces Google to route around the blocked segment)
+            _gmaps_url = (
+                "https://www.google.com/maps/dir/?api=1"
+                f"&origin={_a_lat},{_a_lon}"
+                f"&destination={_c_lat},{_c_lon}"
+                f"&waypoints={_b_lat},{_b_lon}"
+                "&travelmode=driving"
+                "&dir_action=navigate"
+            )
+
+            # Also build a simpler "view incident location" link
+            _gmaps_incident_url = (
+                f"https://www.google.com/maps/search/?api=1"
+                f"&query={_lat},{_lon}"
+            )
+
+            btn_col1, btn_col2 = st.columns([1, 1])
+            with btn_col1:
+                st.markdown(
+                    f"""<a href="{_gmaps_url}" target="_blank" style="
+                        display:block;text-align:center;
+                        background:linear-gradient(135deg,#1a6b3c,#34a853);
+                        color:#fff;font-weight:700;font-size:13px;
+                        letter-spacing:.05em;padding:10px 0;
+                        border-radius:7px;text-decoration:none;
+                        box-shadow:0 2px 8px rgba(52,168,83,.35);">
+                        🗺️ &nbsp;Open Diversion in Google Maps
+                    </a>""",
+                    unsafe_allow_html=True,
+                )
+            with btn_col2:
+                st.markdown(
+                    f"""<a href="{_gmaps_incident_url}" target="_blank" style="
+                        display:block;text-align:center;
+                        background:linear-gradient(135deg,#8b1a1a,#ea4335);
+                        color:#fff;font-weight:700;font-size:13px;
+                        letter-spacing:.05em;padding:10px 0;
+                        border-radius:7px;text-decoration:none;
+                        box-shadow:0 2px 8px rgba(234,67,53,.35);">
+                        📍 &nbsp;View Incident on Google Maps
+                    </a>""",
+                    unsafe_allow_html=True,
+                )
+
+            st.caption(
+                "↑ Opens Google Maps in browser (desktop) or Maps app (mobile) "
+                "with live traffic-aware routing around the blocked segment."
+            )
+            st.write("")
+
             if FOLIUM_AVAILABLE:
-                _build_folium_map(
-                    st.session_state.radar_lat,
-                    st.session_state.radar_lon,
-                    result.get("diversion", {}),
-                    result.get("s_risk", 1),
-                    result.get("event_cause", "unknown"),
-                    st.session_state.radar_desc,
-                )
+                _build_folium_map(_lat, _lon, _div, _risk, _cause, _desc)
             else:
-                _map_placeholder(
-                    st.session_state.radar_lat,
-                    st.session_state.radar_lon,
-                    result.get("diversion", {}),
-                )
+                _map_placeholder(_lat, _lon, _div)
 
         st.divider()
         if st.button("🔄  Clear & New Incident"):
@@ -736,11 +866,11 @@ with tab1:
         st.markdown("""
 <div class="idle-panel">
   <p style="font-size:34px;margin:0">📡</p>
-  <p style="font-size:15px;margin:10px 0 0">
-      Enter a field report above and hit
-      <strong style="color:#00d4ff">⚡ INITIATE PROTOCOL</strong> to begin analysis.
+  <p style="font-size:15px;margin:10px 0 0;color:#1c2b3a">
+      Enter a field report above and click
+      <strong style="color:#0a2540">Dispatch Analysis</strong> to begin.
   </p>
-  <p style="font-size:12px;margin:6px 0 0;color:#1e3d52">
+  <p style="font-size:12px;margin:6px 0 0;color:#8a97a3">
       NLP Semantic Scoring → XGBoost Clearance Classifier → Wardrop Equilibrium Routing → Prescriptive Dispatch
   </p>
 </div>
@@ -751,11 +881,73 @@ with tab1:
 #  TAB 2 — POST-EVENT AUDIT (GEH Feedback Loop)
 # ════════════════════════════════════════════════════════════════════════════
 with tab2:
+    st.markdown('<span class="section-tag">Road Safety — Model Audit</span>', unsafe_allow_html=True)
     st.markdown("#### Post-Event Learning Loop — GEH Statistic Calibration")
     st.caption(
         "The GEH Statistic (Geoffrey E. Havers) measures model-vs-observed divergence. "
         "GEH < 5 = well-calibrated. GEH ≥ 5 triggers incremental re-training."
     )
+
+    # ── Concept Drift Monitor (30-day rolling GEH calibration) ───────────────
+    st.markdown("### 🌊 Concept Drift Detector — 30-Day Calibration Telemetry")
+    st.caption(
+        "Rolling System Accuracy (GEH Calibration %) over the trailing 30 days. "
+        "A sustained drop signals concept drift — live conditions have shifted away "
+        "from the distribution the Weibull AFT survival model was trained on."
+    )
+
+    if "drift_series" not in st.session_state:
+        st.session_state.drift_series = [
+            95.0, 95.2, 94.8, 95.1, 95.4, 95.0, 94.9, 95.3, 95.6, 95.2,
+            95.0, 94.7, 95.1, 95.4, 95.2, 95.0, 94.8, 95.3, 95.5, 95.1,
+            94.9, 95.2, 95.0, 94.8, 95.1, 95.3, 95.0,   # Days 1-27 — stable ~95%
+            90.5, 86.2, 82.0,                            # Days 28-30 — sharp drift
+        ]
+        st.session_state.drift_recalibrated = False
+
+    drift_days = [f"Day {i + 1}" for i in range(len(st.session_state.drift_series))]
+    if PANDAS_AVAILABLE:
+        drift_df = pd.DataFrame(
+            {"System Accuracy — GEH Calibration (%)": st.session_state.drift_series},
+            index=drift_days,
+        )
+        st.line_chart(drift_df, height=260)
+    else:
+        st.line_chart(st.session_state.drift_series, height=260)
+
+    if not st.session_state.drift_recalibrated:
+        st.warning(
+            "⚠️ **System Alert:** GEH Calibration dropped below the **85%** threshold "
+            "during yesterday's **Outer Ring Road waterlogging event**. "
+            "**Concept Drift Detected.**"
+        )
+    else:
+        st.success("✅ Model Successfully Re-calibrated. Zero downtime.")
+
+    drift_btn_col, drift_reset_col = st.columns([3, 1])
+    with drift_btn_col:
+        if st.button(
+            "🔁  Trigger Adaptive Incremental Learning (RiverML)",
+            type="primary",
+            use_container_width=True,
+            disabled=st.session_state.drift_recalibrated,
+            key="drift_retrain_btn",
+        ):
+            with st.spinner("Re-calibrating Weibull AFT weights with new telemetry…"):
+                time.sleep(3)
+            spiked = st.session_state.drift_series.copy()
+            spiked[-3:] = [94.0, 96.5, 98.0]
+            st.session_state.drift_series = spiked
+            st.session_state.drift_recalibrated = True
+            st.rerun()
+    with drift_reset_col:
+        if st.session_state.drift_recalibrated:
+            if st.button("↩  Reset", use_container_width=True, key="drift_reset_btn"):
+                del st.session_state.drift_series
+                st.session_state.drift_recalibrated = False
+                st.rerun()
+
+    st.divider()
 
     # ── System scorecard ─────────────────────────────────────────────────────
     st.markdown("### 📊 Yesterday's System Calibration Report")
@@ -876,7 +1068,8 @@ Live Dispatch ──► Outcome Logger ──► GEH Calculator
 #  TAB 3 — cyROAD VISION AUDIT
 # ════════════════════════════════════════════════════════════════════════════
 with tab3:
-    st.markdown("#### cyRoad Agentic Video Intelligence — Barricade Compliance Audit")
+    st.markdown('<span class="section-tag">Enforcement — Vision Audit</span>', unsafe_allow_html=True)
+    st.markdown("#### ASTraM Vision — Barricade Compliance Audit")
     st.caption(
         "A Vision-Language Model (VLM) API bridges the gap between digital dispatch planning and "
         "physical ground truth. Frame-level analysis verifies barricade type, placement compliance, "
@@ -889,26 +1082,26 @@ with tab3:
     with cam_col:
         st.markdown("### 📷 Traffic Camera Feed")
         st.markdown("""
-<div style="background:#050d14;border:1px solid #183650;border-radius:10px;overflow:hidden;">
+<div style="background:#0c1420;border:1px solid #d7dde3;border-radius:8px;overflow:hidden;">
   <svg viewBox="0 0 480 300" xmlns="http://www.w3.org/2000/svg" width="100%" style="display:block">
     <!-- Background / sky -->
-    <rect width="480" height="300" fill="#050d14"/>
+    <rect width="480" height="300" fill="#0c1420"/>
     <!-- Road -->
-    <rect x="0" y="162" width="480" height="138" fill="#10181f"/>
+    <rect x="0" y="162" width="480" height="138" fill="#161f2c"/>
     <!-- Road lane dashes -->
-    <rect x="228" y="172" width="24" height="36" fill="#1e3040" opacity=".6"/>
-    <rect x="228" y="218" width="24" height="36" fill="#1e3040" opacity=".6"/>
+    <rect x="228" y="172" width="24" height="36" fill="#26344a" opacity=".6"/>
+    <rect x="228" y="218" width="24" height="36" fill="#26344a" opacity=".6"/>
     <!-- Horizon -->
-    <line x1="0" y1="162" x2="480" y2="162" stroke="#183650" stroke-width="1"/>
+    <line x1="0" y1="162" x2="480" y2="162" stroke="#2c3c52" stroke-width="1"/>
     <!-- Building silhouettes -->
-    <rect x="0"   y="82"  width="62"  height="80" fill="#080f16"/>
-    <rect x="72"  y="102" width="50"  height="60" fill="#080f16"/>
-    <rect x="362" y="92"  width="54"  height="70" fill="#080f16"/>
-    <rect x="422" y="112" width="58"  height="50" fill="#080f16"/>
+    <rect x="0"   y="82"  width="62"  height="80" fill="#0a121d"/>
+    <rect x="72"  y="102" width="50"  height="60" fill="#0a121d"/>
+    <rect x="362" y="92"  width="54"  height="70" fill="#0a121d"/>
+    <rect x="422" y="112" width="58"  height="50" fill="#0a121d"/>
     <!-- Window lights -->
-    <rect x="10"  y="90"  width="8" height="6" fill="#1a3048" opacity=".7"/>
-    <rect x="26"  y="100" width="8" height="6" fill="#1a3048" opacity=".5"/>
-    <rect x="374" y="100" width="8" height="6" fill="#1a3048" opacity=".7"/>
+    <rect x="10"  y="90"  width="8" height="6" fill="#2c4156" opacity=".7"/>
+    <rect x="26"  y="100" width="8" height="6" fill="#2c4156" opacity=".5"/>
+    <rect x="374" y="100" width="8" height="6" fill="#2c4156" opacity=".7"/>
     <!-- Type III MUTCD Barricades -->
     <g transform="translate(158,112)">
       <rect x="-3" y="-28" width="6" height="30" fill="#7a7a7a"/>
@@ -933,15 +1126,13 @@ with tab3:
     </g>
     <!-- VLM detection box -->
     <rect x="128" y="82" width="138" height="78" fill="none"
-          stroke="#00ff9d" stroke-width="1.5" stroke-dasharray="6,3" rx="4" opacity=".9"/>
-    <text x="132" y="78" fill="#00ff9d" font-size="9" font-family="monospace">DETECTED: Type III MUTCD ✓</text>
+          stroke="#4caf7d" stroke-width="1.5" stroke-dasharray="6,3" rx="4" opacity=".9"/>
+    <text x="132" y="78" fill="#4caf7d" font-size="9" font-family="monospace">DETECTED: Type III MUTCD ✓</text>
     <!-- HUD overlays -->
-    <text x="8"   y="16" fill="#00d4ff" font-size="9"  font-family="monospace">CAM-07 // SILK BOARD JCT</text>
-    <text x="8"   y="28" fill="#4a6a82" font-size="8"  font-family="monospace">2024-06-18  14:32:07  IST</text>
-    <circle cx="466" cy="12" r="5" fill="#ff4040" opacity=".9"/>
-    <text x="452" y="16" fill="#ff4040" font-size="8" font-family="monospace">REC</text>
-    <!-- Scan-line hint -->
-    <line x1="0" y1="205" x2="480" y2="205" stroke="#00d4ff" stroke-width=".5" opacity=".25"/>
+    <text x="8"   y="16" fill="#8aa6c2" font-size="9"  font-family="monospace">CAM-07 // SILK BOARD JCT</text>
+    <text x="8"   y="28" fill="#5b7390" font-size="8"  font-family="monospace">2024-06-18  14:32:07  IST</text>
+    <circle cx="466" cy="12" r="5" fill="#c0392b" opacity=".9"/>
+    <text x="452" y="16" fill="#c0392b" font-size="8" font-family="monospace">REC</text>
   </svg>
 </div>
 """, unsafe_allow_html=True)
@@ -963,16 +1154,16 @@ with tab3:
 
         if not st.session_state.audit_done:
             st.markdown("""
-<div style="background:#0b1a27;border:1px dashed #183650;border-radius:10px;
-            padding:30px;text-align:center;color:#334d60;margin-bottom:16px;">
+<div style="background:#ffffff;border:1px dashed #c5ccd4;border-radius:8px;
+            padding:30px;text-align:center;color:#5b6b7a;margin-bottom:16px;">
   <p style="font-size:30px;margin:0">🔍</p>
   <p style="font-size:13px;margin:10px 0 0">
-      Click <strong style="color:#00d4ff">Run Compliance Audit</strong> to invoke<br>
+      Click <strong style="color:#0a2540">Run Compliance Audit</strong> to invoke<br>
       the Vision-Language Model analysis pipeline.
   </p>
 </div>
 """, unsafe_allow_html=True)
-            if st.button("▶  Run Compliance Audit", type="primary", use_container_width=True):
+            if st.button("▶  Run Compliance Audit", type="primary", use_container_width=True, key="silk_board_audit_btn"):
                 with st.spinner("🔬 Invoking VLM API… extracting frame features… running MUTCD compliance check…"):
                     time.sleep(2)
                 st.session_state.audit_done = True
@@ -1022,13 +1213,102 @@ with tab3:
                     unsafe_allow_html=True,
                 )
 
-            if st.button("↩  Reset Audit"):
+            if st.button("↩  Reset Audit", key="silk_board_reset_btn"):
                 st.session_state.audit_done = False
+                st.rerun()
+
+    st.divider()
+
+    # ── Camera 2 — Outer Ring Road non-compliance case ───────────────────────
+    st.markdown("### 🚧 Camera Feed — Outer Ring Road Diversion (Non-Compliance Case)")
+    st.caption(
+        "BTP officers occasionally place ad-hoc cone diversions on the ground that don't match "
+        "the digital dispatch plan, sometimes creating worse congestion or wrong-way movement. "
+        "ASTraM Vision closes this 'last mile' gap by auditing physical ground truth against protocol."
+    )
+
+    orr_cam_col, orr_audit_col = st.columns([1, 1])
+
+    with orr_cam_col:
+        st.markdown("### 📷 Traffic Camera Feed")
+        orr_img_path = os.path.join("orr_violation_camera.png")
+        if os.path.exists(orr_img_path):
+            st.image(orr_img_path, use_container_width=True)
+        else:
+            st.warning("Camera asset not found at assets/orr_violation_camera.png")
+        st.caption("📍 Camera TMC-KOR-04 — Outer Ring Road Diversion, Bengaluru | BBMP CCTV integration")
+
+    with orr_audit_col:
+        st.markdown("### 🤖 ASTraM Vision Compliance Audit")
+
+        if "orr_audit_done" not in st.session_state:
+            st.session_state.orr_audit_done = False
+
+        if not st.session_state.orr_audit_done:
+            st.markdown("""
+<div style="background:#ffffff;border:1px dashed #c5ccd4;border-radius:8px;
+            padding:30px;text-align:center;color:#5b6b7a;margin-bottom:16px;">
+  <p style="font-size:30px;margin:0">🔍</p>
+  <p style="font-size:13px;margin:10px 0 0">
+      Click <strong style="color:#0a2540">Run Compliance Audit</strong> to invoke<br>
+      the Vision-Language Model analysis pipeline on this frame.
+  </p>
+</div>
+""", unsafe_allow_html=True)
+            if st.button("▶  Run Compliance Audit", type="primary", use_container_width=True, key="orr_audit_btn"):
+                with st.spinner("🔬 Invoking VLM API… analyzing frame… checking MUTCD protocol compliance…"):
+                    time.sleep(2)
+                st.session_state.orr_audit_done = True
+                st.rerun()
+        else:
+            orr_result = {
+                "camera_id": "TMC-KOR-04",
+                "timestamp": "2026-06-20T10:15:00Z",
+                "analysis": {
+                    "barricade_detected": True,
+                    "barricade_type": "Standard Cones",
+                    "required_by_protocol": "Type III MUTCD",
+                    "compliance_status": "FAIL",
+                    "hazards": ["Wrong-way driving detected on diversion route"],
+                },
+                "action_taken": "Automated alert dispatched to Sector Commander.",
+            }
+
+            st.markdown("""
+<div class="anomaly-box">
+  🚨 <strong>Compliance Audit Complete — FAIL</strong><br>
+  Ground deployment does not match protocol. Hazard confirmed.
+</div>
+""", unsafe_allow_html=True)
+
+            st.markdown("**VLM Compliance Report**")
+            st.json(orr_result)
+
+            st.divider()
+            st.markdown("**Checklist Breakdown**")
+            orr_checks = [
+                ("Barricade Detected",            "✅ YES",   "#00c864"),
+                ("Type III MUTCD Classification", "❌ FAIL — Standard Cones used", "#ff4040"),
+                ("Correct Placement Zone",        "❌ FAIL", "#ff4040"),
+                ("Wrong-Way Driving",              "🚨 DETECTED", "#ff4040"),
+                ("Sector Commander Alerted",       "✅ DISPATCHED", "#00c864"),
+            ]
+            for label, status, color in orr_checks:
+                st.markdown(
+                    f'<div class="checklist-row">'
+                    f'<span style="color:#c9d6df">{label}</span>'
+                    f'<span style="color:{color};font-weight:700">{status}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            if st.button("↩  Reset Audit", key="orr_reset_btn"):
+                st.session_state.orr_audit_done = False
                 st.rerun()
 
     # ── Architecture note ─────────────────────────────────────────────────────
     st.divider()
-    st.markdown("### 🏗️  cyRoad Vision Architecture")
+    st.markdown("### 🏗️  ASTraM Vision — Architecture")
     st.code("""
 BBMP CCTV Stream
       │
@@ -1059,10 +1339,14 @@ Compliance Report (JSON)  ◄─────────────────
 #  FOOTER
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown("""
-<hr style="margin-top:40px"/>
-<p style="text-align:center;color:#1e3d52;font-size:11px;
-          font-family:'Share Tech Mono',monospace;letter-spacing:.06em;">
-  ASTraM-Nexus v2.0 &nbsp;•&nbsp; Bengaluru Metropolitan Traffic Authority &nbsp;•&nbsp;
-  XGBoost + Wardrop + GEH + cyRoad VLM &nbsp;•&nbsp; Smart Cities Mission India
-</p>
+<hr style="margin-top:40px;border-color:#d7dde3"/>
+<div style="text-align:center;padding:6px 0 18px;">
+  <p style="color:#0a2540;font-size:12px;font-weight:700;letter-spacing:.03em;margin:0 0 3px;">
+    ASTraM-Nexus v2.0 &nbsp;|&nbsp; Bengaluru City Traffic Police
+  </p>
+  <p style="color:#8a97a3;font-size:11px;letter-spacing:.02em;margin:0;">
+    XGBoost · Wardrop Equilibrium · GEH Calibration · ASTraM Vision (VLM) &nbsp;•&nbsp;
+    Developed in support of Smart Cities Mission, Government of India
+  </p>
+</div>
 """, unsafe_allow_html=True)
