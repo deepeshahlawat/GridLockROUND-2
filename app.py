@@ -665,7 +665,7 @@ def _build_folium_map(lat, lon, diversion, s_risk=1, event_cause="unknown", inci
             ),
         ).add_to(m)
 
-    st_folium(m, height=460, use_container_width=True)
+    st_folium(m, height=460, width=True)
 
 
 def _map_placeholder(lat: float, lon: float, diversion: dict):
@@ -890,7 +890,7 @@ with tab1:
             label_visibility="collapsed",
         )
     with col_btn:
-        run_protocol = st.button("Dispatch Analysis", use_container_width=True, type="primary")
+        run_protocol = st.button("Dispatch Analysis", width=True, type="primary")
 
     # ── Optional coordinate override ─────────────────────────────────────────
     with st.expander("📍 Override Incident Coordinates (optional)"):
@@ -995,7 +995,7 @@ with tab1:
                         f"{result['prob_long']   * 100:.1f}%",
                     ],
                 })
-                st.dataframe(prob_df, hide_index=True, use_container_width=True)
+                st.dataframe(prob_df, hide_index=True, width=True)
 
             st.markdown(f"**Detected event type:** `{result['event_cause']}`")
 
@@ -1192,7 +1192,7 @@ with tab4:
         with vc2:
             venue_lon = st.number_input("Longitude", value=77.6245, format="%.4f", key="fc_lon")
 
-    run_forecast = st.button("📋  Generate Forecast & Deployment Plan", type="primary", use_container_width=True)
+    run_forecast = st.button("📋  Generate Forecast & Deployment Plan", type="primary", width=True)
 
     if "forecast_result" not in st.session_state:
         st.session_state.forecast_result = None
@@ -1262,7 +1262,7 @@ with tab4:
                     }
                     for p in r["precedents"]
                 ])
-                st.dataframe(prec_df, hide_index=True, use_container_width=True)
+                st.dataframe(prec_df, hide_index=True, width=True)
             if r["avg_precedent_clearance"]:
                 st.markdown(
                     f'<div class="checklist-row"><span style="color:#5b6b7a">Avg. clearance time, similar past events</span>'
@@ -1342,7 +1342,7 @@ with tab2:
         if st.button(
             "🔁  Trigger Adaptive Incremental Learning (RiverML)",
             type="primary",
-            use_container_width=True,
+            width=True,
             disabled=st.session_state.drift_recalibrated,
             key="drift_retrain_btn",
         ):
@@ -1355,7 +1355,7 @@ with tab2:
             st.rerun()
     with drift_reset_col:
         if st.session_state.drift_recalibrated:
-            if st.button("↩  Reset", use_container_width=True, key="drift_reset_btn"):
+            if st.button("↩  Reset", width=True, key="drift_reset_btn"):
                 del st.session_state.drift_series
                 st.session_state.drift_recalibrated = False
                 st.rerun()
@@ -1402,7 +1402,7 @@ with tab2:
             "GEH":              [7.2, 0.4, 0.5, 0.2, 0.6],
             "Status":           ["❌ ANOMALY", "✅ Pass", "✅ Pass", "✅ Pass", "✅ Pass"],
         })
-        st.dataframe(geh_df, use_container_width=True, hide_index=True)
+        st.dataframe(geh_df, width=True, hide_index=True)
 
     st.divider()
 
@@ -1417,7 +1417,7 @@ with tab2:
         st.session_state.retrain_done = False
 
     if not st.session_state.retrain_done:
-        if st.button("🚀  Trigger Online Incremental Learning (RiverML)", type="primary", use_container_width=True):
+        if st.button("🚀  Trigger Online Incremental Learning (RiverML)", type="primary", width=True):
             bar = st.progress(0, text="Preparing anomalous event batch…")
             stages = [
                 (15,  "Loading incident #KRM-2024-0847 feature vector…"),
@@ -1556,7 +1556,7 @@ with tab3:
                 "Field": ["Camera ID", "Location", "Timestamp", "Resolution", "VLM Model"],
                 "Value": ["CAM-07", "Silk Board Junction", "2024-06-18 14:32:07", "1920×1080 @ 25 fps", "claude-3-5-sonnet-vision"],
             })
-            st.dataframe(meta_df, hide_index=True, use_container_width=True)
+            st.dataframe(meta_df, hide_index=True, width=True)
 
     # ── Audit panel ───────────────────────────────────────────────────────────
     with audit_col:
@@ -1576,7 +1576,7 @@ with tab3:
   </p>
 </div>
 """, unsafe_allow_html=True)
-            if st.button("▶  Run Compliance Audit", type="primary", use_container_width=True, key="silk_board_audit_btn"):
+            if st.button("▶  Run Compliance Audit", type="primary", width=True, key="silk_board_audit_btn"):
                 with st.spinner("🔬 Invoking VLM API… extracting frame features… running MUTCD compliance check…"):
                     time.sleep(2)
                 st.session_state.audit_done = True
@@ -1646,7 +1646,7 @@ with tab3:
         st.markdown("### 📷 Traffic Camera Feed")
         orr_img_path = os.path.join("orr_violation_camera.png")
         if os.path.exists(orr_img_path):
-            st.image(orr_img_path, use_container_width=True)
+            st.image(orr_img_path, width=True)
         else:
             st.warning("Camera asset not found at assets/orr_violation_camera.png")
         st.caption("📍 Camera TMC-KOR-04 — Outer Ring Road Diversion, Bengaluru | BBMP CCTV integration")
@@ -1668,7 +1668,7 @@ with tab3:
   </p>
 </div>
 """, unsafe_allow_html=True)
-            if st.button("▶  Run Compliance Audit", type="primary", use_container_width=True, key="orr_audit_btn"):
+            if st.button("▶  Run Compliance Audit", type="primary", width=True, key="orr_audit_btn"):
                 with st.spinner("🔬 Invoking VLM API… analyzing frame… checking MUTCD protocol compliance…"):
                     time.sleep(2)
                 st.session_state.orr_audit_done = True
