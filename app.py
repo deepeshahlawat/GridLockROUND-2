@@ -51,11 +51,33 @@ try:
         dispatch_for_incident,
         get_deployment_plan,
         load_classifier,
+        build_station_registry,
         STATIONS,
     )
     DISPATCHER_AVAILABLE = True
 except ImportError:
     DISPATCHER_AVAILABLE = False
+
+# ── Real model + real station roster, if the artifacts are present ──────────
+# Falls back to the small 5-station demo dict / heuristic probabilities
+# (already handled inside dispatch_for_incident / _run_pipeline) if either
+# file is missing — so the app still runs standalone with no data files.
+REAL_MODEL = None
+REAL_STATIONS = STATIONS if DISPATCHER_AVAILABLE else {}
+REAL_DATA_AVAILABLE = False
+if DISPATCHER_AVAILABLE and PANDAS_AVAILABLE:
+    try:
+        _ml_ready_path = os.path.join(APP_DIR, "ml_ready.csv")
+        _model_path = os.path.join(APP_DIR, "xgb_clearance_classifier.pkl")
+        if os.path.exists(_ml_ready_path) and os.path.exists(_model_path):
+            _ml_df = pd.read_csv(_ml_ready_path, low_memory=False)
+            REAL_MODEL = load_classifier(_model_path)
+            if REAL_MODEL is not None:
+                REAL_STATIONS = build_station_registry(_ml_df)
+                REAL_DATA_AVAILABLE = True
+    except Exception:
+        REAL_MODEL = None
+        REAL_DATA_AVAILABLE = False
 
 try:
     from koramangala_diversion import get_diversion_route
@@ -102,22 +124,30 @@ section[data-testid="stSidebar"] { background: #0a2540; }
     border-bottom: 3px solid #b6862c !important;
 }
 
-/* ── Metric cards ── */
-[data-testid="metric-container"] {
-    background: #ffffff; border: 1px solid #d7dde3; border-left: 4px solid #0a2540;
+/* ── Metric cards (covers both legacy "metric-container" and newer "stMetric" testids) ── */
+[data-testid="metric-container"], [data-testid="stMetric"] {
+    background: #ffffff !important; border: 1px solid #d7dde3; border-left: 4px solid #0a2540;
     border-radius: 6px; padding: 16px !important;
     box-shadow: 0 1px 2px rgba(10,37,64,.06);
 }
-[data-testid="metric-container"] label {
+[data-testid="metric-container"] label, [data-testid="stMetricLabel"], [data-testid="stMetricLabel"] p {
     color: #5b6b7a !important; font-size: 11px !important;
-    letter-spacing: .07em; text-transform: uppercase; font-weight: 600;
+    letter-spacing: .07em; text-transform: uppercase; font-weight: 600 !important;
 }
-[data-testid="metric-container"] [data-testid="stMetricValue"] {
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] div {
     color: #0a2540 !important;
     font-family: 'JetBrains Mono', monospace !important;
     font-size: 25px !important; font-weight: 600 !important;
 }
-[data-testid="stMetricDelta"] { font-size: 11px !important; }
+/* stMetricDelta defaults to white/transparent in this build — force a visible neutral gray,
+   while still letting Streamlit's own green/red up/down arrow colors come through */
+[data-testid="stMetricDelta"] { font-size: 11px !important; color: #5b6b7a !important; }
+[data-testid="stMetricDelta"] div, [data-testid="stMetricDelta"] span, [data-testid="stMetricDelta"] p {
+    color: #5b6b7a !important;
+}
+[data-testid="stMetricDelta"] svg { fill: currentColor !important; }
+[data-testid="stMetricDeltaIcon-Up"] { color: #1a7a3c !important; }
+[data-testid="stMetricDeltaIcon-Down"] { color: #a31f24 !important; }
 
 /* ── Input ── */
 .stTextInput input, .stNumberInput input {
@@ -130,20 +160,39 @@ section[data-testid="stSidebar"] { background: #0a2540; }
 }
 
 /* ── Buttons ── */
-.stButton button[kind="primary"] {
+.stButton button[kind="primary"], .stButton button[kind="primary"] p, .stButton button[kind="primary"] span, .stButton button[kind="primary"] div {
     background: #0a2540 !important;
-    color: #fff !important; border: none !important; border-radius: 5px !important;
+    color: #ffffff !important; border: none !important; border-radius: 5px !important;
     font-weight: 600 !important; letter-spacing: .03em !important;
     transition: background .2s;
 }
 .stButton button[kind="primary"]:hover { background: #123a63 !important; }
-.stButton button:not([kind="primary"]) {
+.stButton button:not([kind="primary"]), .stButton button:not([kind="primary"]) p, .stButton button:not([kind="primary"]) span, .stButton button:not([kind="primary"]) div {
     background: #ffffff !important; color: #0a2540 !important;
     border: 1px solid #0a2540 !important; border-radius: 5px !important; font-weight: 600 !important;
 }
 
-/* ── Alerts ── */
+/* ── Alerts (success / info / warning) — force dark, legible text on pastel backgrounds ── */
 .stAlert { border-radius: 6px !important; border-left-width: 4px !important; }
+.stAlert p, .stAlert span, .stAlert div, .stAlert li, .stAlert strong { color: inherit !important; opacity: 1 !important; }
+
+div[data-testid="stAlertContentSuccess"], div[data-testid="stAlertContentSuccess"] * {
+    color: #14542b !important;
+}
+div[data-testid="stAlertContentInfo"], div[data-testid="stAlertContentInfo"] * {
+    color: #0a3d6b !important;
+}
+div[data-testid="stAlertContentWarning"], div[data-testid="stAlertContentWarning"] * {
+    color: #7a5400 !important;
+}
+div[data-testid="stAlertContentError"], div[data-testid="stAlertContentError"] * {
+    color: #7d1418 !important;
+}
+/* Fallback for older Streamlit versions that don't use the testids above */
+.stSuccess, .stSuccess * { color: #14542b !important; }
+.stInfo, .stInfo * { color: #0a3d6b !important; }
+.stWarning, .stWarning * { color: #7a5400 !important; }
+.stError, .stError * { color: #7d1418 !important; }
 
 /* ── Typography ── */
 h3 { color: #0a2540 !important; font-size: 13.5px !important; letter-spacing: .04em; text-transform: uppercase; font-weight: 700 !important; }
@@ -162,6 +211,18 @@ hr { border-color: #d7dde3 !important; }
 
 /* ── DataFrame ── */
 .stDataFrame { border: 1px solid #d7dde3; border-radius: 6px; }
+
+/* ── Ensure default Streamlit text stays legible on the light civic background ── */
+/* (scoped to exclude .stButton and metric widgets so it never overrides their explicit colors) */
+.stMarkdown p, .stMarkdown li, .stMarkdown span:not([class]) { color: #1c2b3a; }
+[data-testid="stCaptionContainer"], .stCaption, small { color: #5b6b7a !important; }
+[data-testid="stExpander"] summary { color: #0a2540 !important; font-weight: 600 !important; }
+[data-testid="stExpander"] { background: #ffffff; border: 1px solid #d7dde3 !important; border-radius: 6px !important; }
+[data-testid="stWidgetLabel"] p { color: #1c2b3a !important; font-weight: 500 !important; }
+.stSelectbox div[data-baseweb="select"] > div { background: #ffffff !important; color: #1c2b3a !important; border-color: #c5ccd4 !important; }
+.stRadio label p, .stCheckbox label p { color: #1c2b3a !important; }
+section[data-testid="stSidebar"] * { color: #e3e8ec; }
+section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 { color: #ffffff !important; }
 
 /* ════ Official header ════ */
 .gov-strip {
@@ -283,8 +344,9 @@ st.markdown(f"""
 # ════════════════════════════════════════════════════════════════════════════
 #  TABS
 # ════════════════════════════════════════════════════════════════════════════
-tab1, tab2, tab3 = st.tabs([
+tab1, tab4, tab2, tab3 = st.tabs([
     "📡  Incident Response",
+    "🗓️  Planned Event Forecaster",
     "🔄  Post-Event Review",
     "👁️  Ground Compliance",
 ])
@@ -363,29 +425,41 @@ def _infer_prob_long(s_risk: int, text: str) -> float:
 def _run_pipeline(incident_desc: str, lat: float, lon: float) -> dict:
     """
     Single entry-point that ties NLP → dispatcher → diversion together.
-    Falls back to heuristics if real modules are unavailable.
+    Falls back to heuristics if real modules/artifacts are unavailable.
     Returns a normalised result dict the UI can consume directly.
     """
     s_risk, event_cause = _nlp_classify(incident_desc)
     prob_long = _infer_prob_long(s_risk, incident_desc)
+    used_real_model = False
 
     if DISPATCHER_AVAILABLE:
         try:
-            incident = {
-                "lat": lat,
-                "lon": lon,
-                "event_cause": event_cause,
-                "s_risk": s_risk,
-                "prob_long_delay": prob_long,
-            }
-            model = load_classifier("xgb_clearance_classifier.pkl")
-            plan = dispatch_for_incident(incident, model=model)
+            if REAL_DATA_AVAILABLE and REAL_MODEL is not None:
+                # Use the real model with a properly-built 29-feature row —
+                # NOTE: dispatch_for_incident() only calls model.predict_proba()
+                # if BOTH model and feature_row are supplied together.
+                feat = _build_event_feature_row(s_risk, event_cause)
+                if feat is not None:
+                    from dispatcher import predict_long_delay_probability
+                    try:
+                        prob_long = predict_long_delay_probability(REAL_MODEL, feat)
+                        used_real_model = True
+                    except Exception:
+                        pass  # keep heuristic prob_long
+
+            plan = get_deployment_plan(
+                incident_lat=lat, incident_lon=lon,
+                event_cause=event_cause, s_risk=s_risk,
+                prob_long_delay=prob_long,
+                stations=REAL_STATIONS,
+            )
             return {
                 "s_risk":      plan.get("s_risk", s_risk),
                 "event_cause": plan.get("event_cause", event_cause),
                 "prob_quick":  round(1 - prob_long - 0.10, 2),
                 "prob_medium": round(0.10, 2),
                 "prob_long":   prob_long,
+                "used_real_model": used_real_model,
                 "officers":    plan.get("recommended_officers", 2),
                 "station":     plan.get("dispatch_station", "Adugodi PS"),
                 "station_dist_km": plan.get("distance_to_incident_km", "N/A"),
@@ -611,6 +685,193 @@ def _map_placeholder(lat: float, lon: float, diversion: dict):
   </p>
 </div>
 """, unsafe_allow_html=True)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  PLANNED EVENT FORECASTER — helpers
+#
+#  Honesty note: dispatcher.py's get_deployment_plan() is a 4-rule matrix on
+#  (s_risk, prob_long_delay) only — it has NO crowd-size feature, by design
+#  (see dispatcher.py header: "Zero-Shot Prescriptive MOBLP" because there's
+#  no assigned_to_police_id column to learn manpower from). So this forecaster
+#  calls the REAL dispatch_for_incident()/get_deployment_plan() unmodified for
+#  the base plan, then applies a SEPARATE, clearly-labelled crowd-scale
+#  adjustment on top. The two numbers are never silently merged — the UI
+#  always shows "model output" vs "heuristic adjustment" as distinct lines.
+# ════════════════════════════════════════════════════════════════════════════
+
+EVENT_TYPES = {
+    "Political Rally / Public Meeting":     {"event_cause": "procession", "base_s_risk": 2},
+    "Religious Procession":                  {"event_cause": "procession", "base_s_risk": 2},
+    "Festival / Cultural Gathering":         {"event_cause": "procession", "base_s_risk": 2},
+    "Sports Event (Stadium Egress)":         {"event_cause": "procession", "base_s_risk": 2},
+    "VIP Movement / Convoy":                 {"event_cause": "procession", "base_s_risk": 2},
+    "Planned Construction / Road Closure":   {"event_cause": "road_hazard", "base_s_risk": 1},
+    "Wedding / Private Function (Road Use)": {"event_cause": "procession", "base_s_risk": 1},
+}
+
+# Synthetic precedent log — illustrative only. A real deployment should pull
+# this from actual permit/NOC records (BBMP + jurisdictional station event
+# registers), not be hardcoded. Flagged clearly in the UI as a demo dataset.
+HISTORICAL_EVENTS = [
+    {"id": "#EVT-2025-0412", "type": "Religious Procession",                "location": "Koramangala 1st Block", "footfall": 4500,  "officers_deployed": 8,  "clearance_min": 165, "predicted_min": 120},
+    {"id": "#EVT-2025-0388", "type": "Political Rally / Public Meeting",    "location": "Freedom Park",          "footfall": 28000, "officers_deployed": 42, "clearance_min": 240, "predicted_min": 210},
+    {"id": "#EVT-2025-0301", "type": "Festival / Cultural Gathering",       "location": "Chickpet",              "footfall": 12000, "officers_deployed": 20, "clearance_min": 190, "predicted_min": 175},
+    {"id": "#EVT-2025-0276", "type": "Sports Event (Stadium Egress)",       "location": "Chinnaswamy Stadium",   "footfall": 32000, "officers_deployed": 55, "clearance_min": 95,  "predicted_min": 90},
+    {"id": "#EVT-2025-0249", "type": "VIP Movement / Convoy",               "location": "MG Road",               "footfall": 500,   "officers_deployed": 6,  "clearance_min": 35,  "predicted_min": 30},
+    {"id": "#EVT-2025-0190", "type": "Planned Construction / Road Closure", "location": "Outer Ring Road",       "footfall": 0,     "officers_deployed": 3,  "clearance_min": 480, "predicted_min": 480},
+    {"id": "#EVT-2025-0177", "type": "Wedding / Private Function (Road Use)","location": "Adugodi",              "footfall": 800,   "officers_deployed": 2,  "clearance_min": 60,  "predicted_min": 50},
+    {"id": "#EVT-2024-1102", "type": "Religious Procession",                "location": "HSR Layout",            "footfall": 2200,  "officers_deployed": 5,  "clearance_min": 95,  "predicted_min": 90},
+]
+
+
+def _find_precedents(event_type: str, footfall: int, top_n: int = 3) -> list[dict]:
+    """
+    Rank historical events by similarity: same event type weighted heaviest,
+    then closeness of footfall on a log scale (so 500 vs 800 ranks closer
+    than 500 vs 30000). Pure lookup — not a trained model.
+    """
+    import math
+    scored = []
+    for ev in HISTORICAL_EVENTS:
+        type_match = 0 if ev["type"] == event_type else 1
+        log_footfall_diff = abs(math.log10(max(ev["footfall"], 1) + 1) - math.log10(max(footfall, 1) + 1))
+        scored.append((type_match * 10 + log_footfall_diff, ev))
+    scored.sort(key=lambda x: x[0])
+    return [ev for _, ev in scored[:top_n]]
+
+
+def _crowd_scale_adjustment(footfall: int) -> dict:
+    """
+    Transparent, separate heuristic — NOT part of dispatcher.py's trained
+    pipeline. Bengaluru BTP route-pass guidance broadly scales marshal/
+    barricade requirements with footfall bands; this mirrors that shape
+    at a coarse level for planning purposes only.
+    """
+    if footfall < 1000:
+        return {"extra_officers": 0, "band": "Small (<1,000)", "extra_barricade_note": None}
+    elif footfall < 5000:
+        return {"extra_officers": 3, "band": "Medium (1,000–5,000)", "extra_barricade_note": "Add perimeter cones at entry/exit choke points"}
+    elif footfall < 15000:
+        return {"extra_officers": 10, "band": "Large (5,000–15,000)", "extra_barricade_note": "Type III MUTCD at all approach roads + dedicated traffic-control unit"}
+    elif footfall < 30000:
+        return {"extra_officers": 25, "band": "Very Large (15,000–30,000)", "extra_barricade_note": "Full road closure on primary approach + QRT on standby"}
+    else:
+        return {"extra_officers": 45, "band": "Mega (30,000+)", "extra_barricade_note": "Multi-station mutual aid + traffic-free corridor + drone surveillance"}
+
+
+def _build_event_feature_row(s_risk: int, event_cause: str):
+    """
+    Build a single-row DataFrame matching the model's 29 trained features
+    EXACTLY (priority, event_cause_*, veh_type_*, zone_*, S_risk) for a
+    planned event that has no underlying vehicle-incident row to draw from.
+
+    Defaults used, and why:
+      - veh_type_*: zeroed (no specific vehicle is "at fault" in a crowd
+        event — bmtc_bus is the modal class in training data but assigning
+        it here would misrepresent a procession as a bus-caused incident).
+      - zone_*: zeroed (model has no real geofencing from one-hot zone
+        alone without the original zone boundary lookup; leaving all-zero
+        means "zone unknown" rather than guessing wrong).
+      - priority: mapped from s_risk (3 -> high priority=3, else 1) since
+        priority and S_risk are correlated but not identical in training
+        data (crosstab confirms priority=3 dominates at every S_risk band).
+    """
+    if not REAL_DATA_AVAILABLE or REAL_MODEL is None:
+        return None
+    from dispatcher import build_feature_row
+    cols = list(REAL_MODEL.feature_names_in_)
+    row = {c: 0 for c in cols}
+    row["S_risk"] = s_risk
+    row["priority"] = 3 if s_risk >= 2 else 1
+    cause_col = f"event_cause_{event_cause}"
+    if cause_col in row:
+        row[cause_col] = 1
+    feat_df = pd.DataFrame([row])[cols]  # enforce exact training column order
+    return feat_df
+
+
+def _run_event_forecast(event_type: str, footfall: int, lat: float, lon: float, advance_days: int) -> dict:
+    """
+    Builds an `incident` dict in the SAME shape _run_pipeline() uses, calls
+    the real dispatcher (or its documented heuristic fallback) for the base
+    plan, then layers the crowd-scale adjustment on top as a distinct,
+    separately-reported figure.
+    """
+    meta = EVENT_TYPES.get(event_type, {"event_cause": "procession", "base_s_risk": 2})
+    s_risk = meta["base_s_risk"]
+    event_cause = meta["event_cause"]
+
+    # Larger advance notice with a high footfall event nudges s_risk up —
+    # more lead time usually means a bigger, more formally organized event.
+    if footfall >= 15000 and s_risk < 3:
+        s_risk += 1
+
+    used_real_model = False
+    if REAL_DATA_AVAILABLE and REAL_MODEL is not None:
+        feat = _build_event_feature_row(s_risk, event_cause)
+        if feat is not None:
+            from dispatcher import predict_long_delay_probability
+            try:
+                prob_long = predict_long_delay_probability(REAL_MODEL, feat)
+                used_real_model = True
+            except Exception:
+                prob_long = {1: 0.20, 2: 0.55, 3: 0.78}.get(s_risk, 0.40)
+        else:
+            prob_long = {1: 0.20, 2: 0.55, 3: 0.78}.get(s_risk, 0.40)
+    else:
+        prob_long = {1: 0.20, 2: 0.55, 3: 0.78}.get(s_risk, 0.40)
+
+    if footfall >= 10000:
+        prob_long = min(prob_long + 0.12, 0.95)
+
+    base_plan = None
+    if DISPATCHER_AVAILABLE:
+        try:
+            base_plan = get_deployment_plan(
+                incident_lat=lat, incident_lon=lon,
+                event_cause=event_cause, s_risk=s_risk,
+                prob_long_delay=prob_long,
+                stations=REAL_STATIONS,
+            )
+        except Exception as exc:
+            st.warning(f"Dispatcher raised: {exc}. Using heuristic fallback for base plan.")
+
+    if base_plan is None:
+        # Mirrors dispatcher.py's own 4-rule matrix exactly, so the fallback
+        # number means the same thing as the real one would.
+        officers = 1 + (2 if s_risk == 3 else 1 if s_risk == 2 else 0) + (2 if prob_long > 0.60 else 0)
+        officers = min(officers, 6)
+        barricade = (
+            "Type III MUTCD + Scene Cordon" if s_risk == 3
+            else "Type III MUTCD" if prob_long > 0.60
+            else "Standard Cones"
+        )
+        base_plan = {
+            "event_cause": event_cause, "s_risk": s_risk, "prob_long_delay": prob_long,
+            "recommended_officers": officers, "dispatch_station": "Koramangala PS",
+            "distance_to_incident_km": 0.8, "barricade_protocol": barricade,
+            "over_capacity_warning": False,
+        }
+
+    adjustment = _crowd_scale_adjustment(footfall)
+    precedents = _find_precedents(event_type, footfall)
+    avg_precedent_clearance = (
+        round(sum(p["clearance_min"] for p in precedents) / len(precedents)) if precedents else None
+    )
+
+    return {
+        "event_cause": event_cause,
+        "s_risk": s_risk,
+        "prob_long_delay": prob_long,
+        "used_real_model": used_real_model,
+        "base_plan": base_plan,
+        "adjustment": adjustment,
+        "total_officers": base_plan["recommended_officers"] + adjustment["extra_officers"],
+        "precedents": precedents,
+        "avg_precedent_clearance": avg_precedent_clearance,
+        "advance_days": advance_days,
+    }
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -872,6 +1133,158 @@ with tab1:
   </p>
   <p style="font-size:12px;margin:6px 0 0;color:#8a97a3">
       NLP Semantic Scoring → XGBoost Clearance Classifier → Wardrop Equilibrium Routing → Prescriptive Dispatch
+  </p>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  TAB 4 — PLANNED EVENT FORECASTER
+# ════════════════════════════════════════════════════════════════════════════
+with tab4:
+    st.markdown('<span class="section-tag">Pre-Event Planning</span>', unsafe_allow_html=True)
+    st.markdown("#### Permit-Stage Forecast — Register an Upcoming Event for a Pre-Positioned Deployment Plan")
+    st.caption(
+        "For rallies, processions, festivals, and other NOC/permit-stage events. "
+        "Unlike Incident Response (Tab 1), this runs **before** the event — so barricades, "
+        "manpower, and diversions can be staged in advance instead of reacted to."
+    )
+
+    with st.container():
+        if REAL_DATA_AVAILABLE:
+            st.markdown("""
+<div style="background:#eaf6ee;border:1px solid #1a7a3c;border-left:4px solid #1a7a3c;
+            border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:12.5px;color:#14542b;">
+  ✅ <strong>Live data:</strong> base officer/barricade/station numbers come from the trained
+  XGBoost classifier (<code>xgb_clearance_classifier.pkl</code>) and the real 53-station roster
+  built from <code>ml_ready.csv</code>. Footfall/crowd-size is <strong>not</strong> a feature the
+  model was trained on, so the footfall-driven adjustment below is a separate, clearly-labelled
+  heuristic — not folded into the model's number.
+</div>
+""", unsafe_allow_html=True)
+        else:
+            st.markdown("""
+<div style="background:#fff8e8;border:1px solid #b6862c;border-left:4px solid #b6862c;
+            border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:12.5px;color:#6b4e0f;">
+  ℹ️ <strong>How this works:</strong> <code>xgb_clearance_classifier.pkl</code> / <code>ml_ready.csv</code>
+  not found alongside the app — running on the documented heuristic fallback (same logic as Tab 1).
+  Base officer/barricade/station numbers mirror the dispatcher's own 4-rule matrix.
+  Footfall-driven adjustment is shown as a separate, clearly-labelled heuristic line either way.
+</div>
+""", unsafe_allow_html=True)
+
+    # ── Input form ───────────────────────────────────────────────────────────
+    fc1, fc2 = st.columns(2)
+    with fc1:
+        event_type = st.selectbox("Event Type", list(EVENT_TYPES.keys()))
+        footfall = st.number_input(
+            "Expected Footfall (estimated attendance)",
+            min_value=0, max_value=200000, value=4000, step=100,
+        )
+    with fc2:
+        advance_days = st.slider("Advance Notice (days before event)", 0, 30, 7)
+        event_date = st.date_input("Event Date")
+
+    with st.expander("📍 Venue Coordinates"):
+        vc1, vc2 = st.columns(2)
+        with vc1:
+            venue_lat = st.number_input("Latitude", value=12.9352, format="%.4f", key="fc_lat")
+        with vc2:
+            venue_lon = st.number_input("Longitude", value=77.6245, format="%.4f", key="fc_lon")
+
+    run_forecast = st.button("📋  Generate Forecast & Deployment Plan", type="primary", use_container_width=True)
+
+    if "forecast_result" not in st.session_state:
+        st.session_state.forecast_result = None
+
+    if run_forecast:
+        with st.spinner("🔍 Matching historical precedent… running dispatcher… computing crowd-scale adjustment…"):
+            time.sleep(0.9)
+            st.session_state.forecast_result = _run_event_forecast(
+                event_type, int(footfall), venue_lat, venue_lon, advance_days
+            )
+
+    st.divider()
+
+    if st.session_state.forecast_result:
+        r = st.session_state.forecast_result
+        bp = r["base_plan"]
+        adj = r["adjustment"]
+
+        st.success(f"✅ Forecast complete — {advance_days} day(s) advance notice.")
+
+        rc1, rc2, rc3, rc4 = st.columns(4)
+        with rc1:
+            risk_label = {1: "🟢 Low", 2: "🟡 Medium", 3: "🔴 High"}.get(r["s_risk"], "—")
+            st.metric("Semantic Risk (S_risk)", f"{r['s_risk']} / 3", risk_label)
+        with rc2:
+            prob_src = "XGBoost model" if r.get("used_real_model") else "heuristic"
+            st.metric("P(Gridlock > 120 min)", f"{r['prob_long_delay']*100:.0f}%", prob_src, delta_color="off")
+        with rc3:
+            st.metric("Crowd-Scale Band", adj["band"])
+        with rc4:
+            st.metric("Total Recommended Officers", str(r["total_officers"]),
+                       f"+{adj['extra_officers']} crowd-scale", delta_color="off")
+
+        st.divider()
+        plan_col, precedent_col = st.columns([1, 1])
+
+        with plan_col:
+            st.markdown("### 👮 Deployment Plan")
+            st.markdown(f"""
+<div class="dispatch-card">
+  <strong>Base plan (dispatcher model):</strong> {bp['recommended_officers']} officer(s)<br>
+  <strong>Crowd-scale adjustment (heuristic):</strong> +{adj['extra_officers']} officer(s)<br>
+  <strong>Total to deploy:</strong> {r['total_officers']} officer(s)<br>
+  <strong>Origin Station:</strong> {bp['dispatch_station']}<br>
+  <strong>Distance to Venue:</strong> {bp['distance_to_incident_km']} km<br>
+  <strong>Base Barricade Protocol:</strong> {bp['barricade_protocol']}
+</div>
+""", unsafe_allow_html=True)
+            if adj["extra_barricade_note"]:
+                st.info(f"🚧 **Crowd-scale barricading note:** {adj['extra_barricade_note']}")
+            if bp.get("over_capacity_warning"):
+                st.warning("⚠️ Nearest station is at/near capacity for this load — consider mutual aid from adjacent jurisdiction.")
+            if advance_days <= 2:
+                st.warning("⏱️ Short advance notice (≤2 days) — limited time to pre-position barricades and coordinate mutual aid.")
+
+        with precedent_col:
+            st.markdown("### 📚 Historical Precedent")
+            st.caption("Closest-matching past events by type and footfall — illustrative dataset, not live permit records.")
+            if PANDAS_AVAILABLE and r["precedents"]:
+                prec_df = pd.DataFrame([
+                    {
+                        "Event": p["id"],
+                        "Type": p["type"],
+                        "Footfall": f"{p['footfall']:,}",
+                        "Officers Used": p["officers_deployed"],
+                        "Actual Clearance": f"{p['clearance_min']} min",
+                    }
+                    for p in r["precedents"]
+                ])
+                st.dataframe(prec_df, hide_index=True, use_container_width=True)
+            if r["avg_precedent_clearance"]:
+                st.markdown(
+                    f'<div class="checklist-row"><span style="color:#5b6b7a">Avg. clearance time, similar past events</span>'
+                    f'<span style="font-weight:700;color:#0a2540">{r["avg_precedent_clearance"]} min</span></div>',
+                    unsafe_allow_html=True,
+                )
+
+        st.divider()
+        if st.button("🔄  Clear & New Event"):
+            st.session_state.forecast_result = None
+            st.rerun()
+
+    else:
+        st.markdown("""
+<div class="idle-panel">
+  <p style="font-size:34px;margin:0">🗓️</p>
+  <p style="font-size:15px;margin:10px 0 0;color:#1c2b3a">
+      Fill in event details above and click
+      <strong style="color:#0a2540">Generate Forecast &amp; Deployment Plan</strong>.
+  </p>
+  <p style="font-size:12px;margin:6px 0 0;color:#8a97a3">
+      Event Profile → Historical Precedent Matching → Dispatcher Model (base plan) → Crowd-Scale Adjustment (heuristic)
   </p>
 </div>
 """, unsafe_allow_html=True)
@@ -1207,7 +1620,7 @@ with tab3:
             for label, status, color in checks:
                 st.markdown(
                     f'<div class="checklist-row">'
-                    f'<span style="color:#c9d6df">{label}</span>'
+                    f'<span style="color:#3a4a58">{label}</span>'
                     f'<span style="color:{color};font-weight:700">{status}</span>'
                     f'</div>',
                     unsafe_allow_html=True,
@@ -1296,7 +1709,7 @@ with tab3:
             for label, status, color in orr_checks:
                 st.markdown(
                     f'<div class="checklist-row">'
-                    f'<span style="color:#c9d6df">{label}</span>'
+                    f'<span style="color:#3a4a58">{label}</span>'
                     f'<span style="color:{color};font-weight:700">{status}</span>'
                     f'</div>',
                     unsafe_allow_html=True,
