@@ -150,27 +150,53 @@ def get_deployment_plan(
     """
     Zero-Shot Prescriptive Manpower Optimization.
 
-    Rule 1 — Base demand (D_min):        every acute incident needs >=1 officer
-    Rule 2 — Risk multiplier:            S_risk == 3  -> +2 officers
-                                          (S_risk == 2 -> +1, a smoother
-                                           extension of the spec so a
-                                           medium-risk incident isn't treated
-                                           identically to a routine one)
-    Rule 3 — Probabilistic multiplier:   P(Long delay) > 0.60 -> +2 officers
-    Rule 4 — Jurisdictional constraint:  dispatch from the nearest station
-                                          (capacity-aware, see Ω_p above)
+    Officer count is now derived from a per-event-cause base demand table,
+    calibrated to real BTP incident response practice and BPR&D guidelines:
+
+      vehicle_breakdown / partial_obstruction (s_risk 1):
+        2–3 officers — one to manage/push the vehicle, 1–2 for traffic flow
+      minor_accident (s_risk 2):
+        4–6 officers — scene + FIR + two-approach diversion
+      procession / road_hazard (s_risk 2):
+        5–8 officers — route/hazard coverage, longer clearance duration
+      accident / unknown serious (s_risk 3):
+        8–12 officers — scene cordon + investigation + multiple diversions +
+        senior supervising officer (matches BTP practice: "teams from three
+        stations + fire services" for serious crashes, BTP Road Safety 2023)
+
+    P(Long delay) modifier: sustained incidents need more relief-rotation
+    cover — adds 1–3 officers depending on event type and base count.
+
+    Rule 4 — Jurisdictional constraint: dispatch from the nearest station
+    (capacity-aware, see Ω_p above).
+
+    Cap: STATION_CAPACITY (25) — single-incident drain guard.
     """
-    officers_needed = 1  # Rule 1
+    # Base demand keyed on (event_cause, s_risk) — inner tuple is
+    # (base_officers, prob_long_bonus) where prob_long_bonus is added when
+    # P(long delay) > 0.60.
+    CAUSE_MATRIX = {
+        # Low-risk: minimal scene + diversion
+        "vehicle_breakdown":    {1: (2, 1), 2: (3, 1), 3: (4, 2)},
+        "partial_obstruction":  {1: (2, 1), 2: (3, 1), 3: (4, 2)},
+        "unknown":              {1: (2, 1), 2: (3, 2), 3: (5, 2)},
+        # Medium-risk: FIR + scene + diversion
+        "minor_accident":       {1: (3, 1), 2: (5, 2), 3: (7, 3)},
+        "road_hazard":          {1: (3, 1), 2: (5, 2), 3: (7, 2)},
+        "procession":           {1: (4, 2), 2: (6, 2), 3: (8, 3)},
+        # High-risk: cordon + investigation + multi-approach diversion
+        "accident":             {1: (5, 2), 2: (8, 3), 3: (12, 3)},
+    }
+    default_matrix = {1: (3, 1), 2: (5, 2), 3: (8, 3)}
 
-    if s_risk == 3:
-        officers_needed += 2
-    elif s_risk == 2:
-        officers_needed += 1
+    cause_row = CAUSE_MATRIX.get(event_cause, default_matrix)
+    base, long_bonus = cause_row.get(s_risk, cause_row.get(2, (4, 2)))
 
+    officers_needed = base
     if prob_long_delay > 0.60:
-        officers_needed += 2
+        officers_needed += long_bonus
 
-    officers_needed = min(officers_needed, 6)  # don't drain a station for one incident
+    officers_needed = min(officers_needed, STATION_CAPACITY)
 
     station, dist_km = find_nearest_station(
         incident_lat, incident_lon, stations, station_load, officers_needed

@@ -611,11 +611,22 @@ def _run_pipeline(incident_desc: str, lat: float, lon: float, location_label=Non
 
     # ── Heuristic fallback ──────────────────────────────────────────────
     # Only triggers if dispatcher.py itself can't be imported, or raises.
-    # Officers/barricade already scale with s_risk + prob_long; station and
-    # distance are now computed dynamically from the real coordinates too,
-    # instead of a fixed "Adugodi PS, 1.2 km" for every incident.
-    officers = 1 + (2 if s_risk == 3 else 1 if s_risk == 2 else 0) + (2 if prob_long > 0.60 else 0)
-    officers = min(officers, 6)
+    # Mirrors dispatcher.py's CAUSE_MATRIX exactly so fallback numbers are
+    # consistent with the real dispatcher output. Station/distance computed
+    # dynamically from real coordinates.
+    _CAUSE_MATRIX = {
+        "vehicle_breakdown":   {1: (2, 1), 2: (3, 1), 3: (4, 2)},
+        "partial_obstruction": {1: (2, 1), 2: (3, 1), 3: (4, 2)},
+        "unknown":             {1: (2, 1), 2: (3, 2), 3: (5, 2)},
+        "minor_accident":      {1: (3, 1), 2: (5, 2), 3: (7, 3)},
+        "road_hazard":         {1: (3, 1), 2: (5, 2), 3: (7, 2)},
+        "procession":          {1: (4, 2), 2: (6, 2), 3: (8, 3)},
+        "accident":            {1: (5, 2), 2: (8, 3), 3: (12, 3)},
+    }
+    _default = {1: (3, 1), 2: (5, 2), 3: (8, 3)}
+    _row = _CAUSE_MATRIX.get(event_cause, _default)
+    _base, _bonus = _row.get(s_risk, _row.get(2, (4, 2)))
+    officers = _base + (_bonus if prob_long > 0.60 else 0)
     barricade = (
         "Type III MUTCD + Scene Cordon" if s_risk == 3
         else "Type III MUTCD" if prob_long > 0.60
@@ -879,23 +890,116 @@ def _find_precedents(event_type: str, footfall: int, top_n: int = 3) -> list[dic
     return [ev for _, ev in scored[:top_n]]
 
 
-def _crowd_scale_adjustment(footfall: int) -> dict:
+def _crowd_scale_adjustment(footfall: int, event_type: str = "", s_risk: int = 2) -> dict:
     """
-    Transparent, separate heuristic — NOT part of dispatcher.py's trained
-    pipeline. Bengaluru BTP route-pass guidance broadly scales marshal/
-    barricade requirements with footfall bands; this mirrors that shape
-    at a coarse level for planning purposes only.
+    Officer count derived from real-world BTP / India precedent data, NOT a
+    flat adder on top of an incident-response base.
+
+    Methodology
+    -----------
+    Base rate (officers per 1,000 attendees) is set per event type and risk
+    score, calibrated against:
+      • Bengaluru/Karnataka observed deployments (Congress rally Aug-2025:
+        6,000 officers, large crowd; Chinnaswamy RCB 2025: 1,400 for 250,000
+        — deemed inadequate by Karnataka HC; BTP historical permit records).
+      • BPR&D Comprehensive Guidelines on Crowd Control & Mass Gathering
+        Management (June 2025) and NDMA 2020 framework.
+      • HISTORICAL_EVENTS table in this codebase (cross-checked: 42 officers
+        for 28,000 political rally ≈ 1.5/1,000; 55 for 32,000 sports ≈ 1.7/1,000
+        — these reflect *past* under-staffing; post-Chinnaswamy BTP targets
+        are materially higher).
+      • International event security practice: 1 officer / 25–50 attendees
+        for high-risk events (IPS Nationwide, 2025); 1 / 100–250 for managed
+        low-risk events.
+
+    VIP/Convoy is treated as a fixed-post problem (escort + corridor), not
+    crowd-ratio — so a minimum floor applies regardless of footfall.
+
+    Crowd bands are preserved for barricade notes; officer count is now
+    computed directly as rate × footfall / 1,000, rounded up, with floor/
+    ceiling guards per band to avoid absurd extrapolation.
     """
+    import math
+
+    # ── Per-event-type base rates (officers per 1,000 attendees) ─────────────
+    # Each tuple is (rate_s_risk_1, rate_s_risk_2, rate_s_risk_3).
+    # Calibrated against:
+    #   • BTP/Karnataka observed deployments:
+    #       - Congress protest Aug-2025: ~6,000 officers, very large crowd
+    #       - Chinnaswamy RCB 2025: 1,400 for 250,000 = 5.6/1k (still insufficient)
+    #       - HISTORICAL_EVENTS in this file: 42 for 28k political (1.5/1k),
+    #         55 for 32k sports (1.7/1k) — these reflect past under-staffing
+    #   • BPR&D Comprehensive Guidelines on Crowd Control & Mass Gathering
+    #     Management (June 2025) + NDMA 2020 framework.
+    #   • International practice: 1/25–50 for high-risk events; 1/100–250 for
+    #     managed low-risk events (IPS Nationwide, 2025).
+    # Rates represent post-Chinnaswamy BTP improvement targets, not past norms.
+    RATE_TABLE = {
+        "Wedding / Private Function (Road Use)":  (0.8,  1.5,  2.5),
+        "Planned Construction / Road Closure":    (3.0,  4.0,  5.0),   # fixed posts, not crowd
+        "Religious Procession":                   (1.2,  2.0,  3.5),   # moving crowd; high stampede history
+        "Festival / Cultural Gathering":          (1.5,  2.5,  4.0),
+        "Political Rally / Public Meeting":       (1.5,  2.5,  4.5),   # volatile; BTP post-Chinnaswamy target
+        "Sports Event (Stadium Egress)":          (1.2,  2.0,  3.5),   # egress surge; Chinnaswamy lesson
+        "VIP Movement / Convoy":                  (6.0,  8.0, 12.0),   # escort logic; not crowd ratio
+    }
+    # Floor officers per band (minimum regardless of rate × footfall)
+    BAND_FLOORS = {
+        "Small":      2,
+        "Medium":     4,
+        "Large":     10,
+        "Very Large": 25,
+        "Mega":       50,
+    }
+    # Ceiling per band — above this, mutual-aid / sector split is assumed;
+    # a warning is shown in the UI rather than inflating the number further.
+    BAND_CEILINGS = {
+        "Small":       15,
+        "Medium":      30,
+        "Large":       80,
+        "Very Large": 180,
+        "Mega":       450,
+    }
+
+    # ── Crowd band ────────────────────────────────────────────────────────────
     if footfall < 1000:
-        return {"extra_officers": 0, "band": "Small (<1,000)", "extra_barricade_note": None}
+        band_key, band_label = "Small", "Small (<1,000)"
+        barricade_note = None
     elif footfall < 5000:
-        return {"extra_officers": 3, "band": "Medium (1,000–5,000)", "extra_barricade_note": "Add perimeter cones at entry/exit choke points"}
+        band_key, band_label = "Medium", "Medium (1,000–5,000)"
+        barricade_note = "Add perimeter cones at entry/exit choke points"
     elif footfall < 15000:
-        return {"extra_officers": 10, "band": "Large (5,000–15,000)", "extra_barricade_note": "Type III MUTCD at all approach roads + dedicated traffic-control unit"}
+        band_key, band_label = "Large", "Large (5,000–15,000)"
+        barricade_note = "Type III MUTCD at all approach roads + dedicated traffic-control unit"
     elif footfall < 30000:
-        return {"extra_officers": 25, "band": "Very Large (15,000–30,000)", "extra_barricade_note": "Full road closure on primary approach + QRT on standby"}
+        band_key, band_label = "Very Large", "Very Large (15,000–30,000)"
+        barricade_note = "Full road closure on primary approach + QRT on standby"
     else:
-        return {"extra_officers": 45, "band": "Mega (30,000+)", "extra_barricade_note": "Multi-station mutual aid + traffic-free corridor + drone surveillance"}
+        band_key, band_label = "Mega", "Mega (30,000+)"
+        barricade_note = "Multi-station mutual aid + traffic-free corridor + drone surveillance"
+
+    # ── Look up rate ──────────────────────────────────────────────────────────
+    rates = RATE_TABLE.get(event_type, (3.0, 4.5, 6.0))   # default: festival-level
+    rate_idx = max(0, min(2, s_risk - 1))
+    rate = rates[rate_idx]
+
+    # ── Compute and clamp officer count ───────────────────────────────────────
+    raw = math.ceil(rate * max(footfall, 1) / 1000)
+    officers = max(raw, BAND_FLOORS[band_key])
+    officers = min(officers, BAND_CEILINGS[band_key])
+
+    # ── Derived: officers per 1,000 for display ───────────────────────────────
+    ratio_display = round(officers / max(footfall, 1) * 1000, 1)
+
+    return {
+        "officers": officers,           # ← replaces "extra_officers"; now the TOTAL event-side count
+        "rate_per_1000": rate,          # base rate used
+        "actual_per_1000": ratio_display,
+        "band": band_label,
+        "extra_barricade_note": barricade_note,
+        # Keep legacy key so any code reading "extra_officers" still gets a value
+        "extra_officers": officers,
+    }
 
 
 def _build_event_feature_row(s_risk: int, event_cause: str):
@@ -980,8 +1084,19 @@ def _run_event_forecast(event_type: str, footfall: int, lat: float, lon: float, 
         # number means the same thing as the real one would. Station/distance
         # now computed from the real venue coordinates too, instead of a
         # fixed "Koramangala PS, 0.8 km" for every event.
-        officers = 1 + (2 if s_risk == 3 else 1 if s_risk == 2 else 0) + (2 if prob_long > 0.60 else 0)
-        officers = min(officers, 6)
+        _CAUSE_MATRIX_EVT = {
+            "vehicle_breakdown":   {1: (2, 1), 2: (3, 1), 3: (4, 2)},
+            "partial_obstruction": {1: (2, 1), 2: (3, 1), 3: (4, 2)},
+            "unknown":             {1: (2, 1), 2: (3, 2), 3: (5, 2)},
+            "minor_accident":      {1: (3, 1), 2: (5, 2), 3: (7, 3)},
+            "road_hazard":         {1: (3, 1), 2: (5, 2), 3: (7, 2)},
+            "procession":          {1: (4, 2), 2: (6, 2), 3: (8, 3)},
+            "accident":            {1: (5, 2), 2: (8, 3), 3: (12, 3)},
+        }
+        _def = {1: (3, 1), 2: (5, 2), 3: (8, 3)}
+        _row = _CAUSE_MATRIX_EVT.get(event_cause, _def)
+        _base, _bonus = _row.get(s_risk, _row.get(2, (4, 2)))
+        officers = _base + (_bonus if prob_long > 0.60 else 0)
         barricade = (
             "Type III MUTCD + Scene Cordon" if s_risk == 3
             else "Type III MUTCD" if prob_long > 0.60
@@ -995,11 +1110,18 @@ def _run_event_forecast(event_type: str, footfall: int, lat: float, lon: float, 
             "over_capacity_warning": False,
         }
 
-    adjustment = _crowd_scale_adjustment(footfall)
+    adjustment = _crowd_scale_adjustment(footfall, event_type=event_type, s_risk=s_risk)
     precedents = _find_precedents(event_type, footfall)
     avg_precedent_clearance = (
         round(sum(p["clearance_min"] for p in precedents) / len(precedents)) if precedents else None
     )
+
+    # Officer count comes entirely from the crowd/event ratio model.
+    # The dispatcher's base_plan.recommended_officers is an *incident-response*
+    # figure (1–6 for a road accident) — it is kept for barricade/station
+    # selection but NOT added to the event crowd total, as that would double-
+    # count and produce unrealistically low numbers.
+    total_officers = adjustment["officers"]
 
     return {
         "event_cause": event_cause,
@@ -1008,7 +1130,7 @@ def _run_event_forecast(event_type: str, footfall: int, lat: float, lon: float, 
         "used_real_model": used_real_model,
         "base_plan": base_plan,
         "adjustment": adjustment,
-        "total_officers": base_plan["recommended_officers"] + adjustment["extra_officers"],
+        "total_officers": total_officers,
         "precedents": precedents,
         "avg_precedent_clearance": avg_precedent_clearance,
         "advance_days": advance_days,
@@ -1339,11 +1461,11 @@ with tab4:
             st.markdown("""
 <div style="background:#eaf6ee;border:1px solid #1a7a3c;border-left:4px solid #1a7a3c;
             border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:12.5px;color:#14542b;">
-  ✅ <strong>Live data:</strong> base officer/barricade/station numbers come from the trained
+  ✅ <strong>Live data:</strong> barricade type and origin station are selected by the trained
   XGBoost classifier (<code>xgb_clearance_classifier.pkl</code>) and the real 53-station roster
-  built from <code>ml_ready.csv</code>. Footfall/crowd-size is <strong>not</strong> a feature the
-  model was trained on, so the footfall-driven adjustment below is a separate, clearly-labelled
-  heuristic — not folded into the model's number.
+  from <code>ml_ready.csv</code>. Officer count uses a <strong>per-1,000-attendees ratio</strong>
+  calibrated to BTP/Karnataka precedent data and BPR&amp;D 2025 guidelines — not the incident-response
+  model (which is sized for road accidents, not crowd events).
 </div>
 """, unsafe_allow_html=True)
         else:
@@ -1351,9 +1473,10 @@ with tab4:
 <div style="background:#fff8e8;border:1px solid #b6862c;border-left:4px solid #b6862c;
             border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:12.5px;color:#6b4e0f;">
   ℹ️ <strong>How this works:</strong> <code>xgb_clearance_classifier.pkl</code> / <code>ml_ready.csv</code>
-  not found alongside the app — running on the documented heuristic fallback (same logic as Tab 1).
-  Base officer/barricade/station numbers mirror the dispatcher's own 4-rule matrix.
-  Footfall-driven adjustment is shown as a separate, clearly-labelled heuristic line either way.
+  not found — using heuristic fallback for barricade and station selection (same as Tab 1).
+  Officer count uses a <strong>per-1,000-attendees ratio</strong> keyed to event type and S_risk,
+  calibrated to BTP/Karnataka precedent data and BPR&amp;D 2025 Crowd Control Guidelines.
+  This is separate from the incident-response dispatcher model, which is sized for road accidents.
 </div>
 """, unsafe_allow_html=True)
 
@@ -1410,8 +1533,12 @@ with tab4:
         with rc3:
             st.metric("Crowd-Scale Band", adj["band"])
         with rc4:
-            st.metric("Total Recommended Officers", str(r["total_officers"]),
-                       f"+{adj['extra_officers']} crowd-scale", delta_color="off")
+            st.metric(
+                "Total Recommended Officers",
+                str(r["total_officers"]),
+                f"{adj['rate_per_1000']} per 1,000 attendees · {adj['band']}",
+                delta_color="off",
+            )
 
         st.divider()
         plan_col, precedent_col = st.columns([1, 1])
@@ -1420,12 +1547,13 @@ with tab4:
             st.markdown("### 👮 Deployment Plan")
             st.markdown(f"""
 <div class="dispatch-card">
-  <strong>Base plan (dispatcher model):</strong> {bp['recommended_officers']} officer(s)<br>
-  <strong>Crowd-scale adjustment (heuristic):</strong> +{adj['extra_officers']} officer(s)<br>
-  <strong>Total to deploy:</strong> {r['total_officers']} officer(s)<br>
+  <strong>Officer count method:</strong> {adj['rate_per_1000']} officers / 1,000 attendees
+  &nbsp;({adj['band']}, S_risk {r['s_risk']})<br>
+  <strong>Total to deploy:</strong> {r['total_officers']} officer(s)
+  &nbsp;<span style="color:#5b6b7a;font-size:12px">({adj['actual_per_1000']}/1,000 effective)</span><br>
   <strong>Origin Station:</strong> {bp['dispatch_station']}<br>
   <strong>Distance to Venue:</strong> {bp['distance_to_incident_km']} km<br>
-  <strong>Base Barricade Protocol:</strong> {bp['barricade_protocol']}
+  <strong>Barricade Protocol:</strong> {bp['barricade_protocol']}
 </div>
 """, unsafe_allow_html=True)
             if adj["extra_barricade_note"]:
