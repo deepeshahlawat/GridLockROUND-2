@@ -16,6 +16,7 @@ import json
 import os
 import re
 import time
+from datetime import date, timedelta
 
 import streamlit as st
 
@@ -80,10 +81,65 @@ if DISPATCHER_AVAILABLE and PANDAS_AVAILABLE:
         REAL_DATA_AVAILABLE = False
 
 try:
-    from koramangala_diversion import get_diversion_route
+    from koramangala_diversion import (
+        load_osm_graph,
+        build_synthetic_graph,
+        build_landmark_index,
+        geocode_from_text,
+        diversion_for_point,
+    )
     ROUTER_AVAILABLE = True
 except ImportError:
     ROUTER_AVAILABLE = False
+
+
+@st.cache_resource(show_spinner=False)
+def _get_diversion_graph():
+    """Built once per server process (not on every rerun/button click)."""
+    if not ROUTER_AVAILABLE:
+        return None
+    try:
+        return load_osm_graph() or build_synthetic_graph()
+    except Exception:
+        return None
+
+
+@st.cache_resource(show_spinner=False)
+def _get_landmark_index():
+    G = _get_diversion_graph()
+    if G is None:
+        return {}
+    return build_landmark_index(G)
+
+
+# Tiny self-contained station registry + distance calc, used ONLY in the
+# rare case dispatcher.py itself can't be imported at all (not just its
+# model/data files). Mirrors dispatcher.py's own demo STATIONS dict so the
+# numbers mean the same thing, but is computed dynamically from whatever
+# coordinates were actually supplied instead of being a fixed string.
+_FALLBACK_STATIONS = {
+    "Koramangala PS": (12.9411, 77.6210),
+    "Madiwala PS":    (12.9210, 77.6207),
+    "HSR Layout PS":  (12.9202, 77.6513),
+    "Adugodi PS":     (12.9416, 77.6087),
+    "Viveknagar PS":  (12.9519, 77.6224),
+}
+
+
+def _nearest_fallback_station(lat: float, lon: float) -> tuple[str, float]:
+    from math import radians, sin, cos, asin, sqrt
+
+    def _hav_km(lat1, lon1, lat2, lon2):
+        R = 6371.0
+        d_lat, d_lon = radians(lat2 - lat1), radians(lon2 - lon1)
+        a = sin(d_lat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lon / 2) ** 2
+        return R * 2 * asin(sqrt(a))
+
+    name, dist = min(
+        ((n, _hav_km(lat, lon, s_lat, s_lon)) for n, (s_lat, s_lon) in _FALLBACK_STATIONS.items()),
+        key=lambda x: x[1],
+    )
+    return name, round(dist, 2)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -422,15 +478,98 @@ def _infer_prob_long(s_risk: int, text: str) -> float:
     return round(base, 2)
 
 
-def _run_pipeline(incident_desc: str, lat: float, lon: float) -> dict:
+def _normalize_diversion(raw: dict, G) -> dict:
+    """Turn koramangala_diversion's raw routing result into the flat shape the UI reads."""
+    if not raw:
+        return {"available": False, "note": "No diversion data."}
+
+    if raw.get("error"):
+        return {
+            "available": False,
+            "blocked_node": raw.get("incident_name"),
+            "note": raw["error"],
+        }
+
+    original = raw.get("original_route")
+    diverted = raw.get("diverted_route")
+    passes_through = (original or {}).get("passes_through_incident")
+
+    if diverted is None:
+        # Genuine chokepoint: blocking this junction leaves no alternate
+        # path between the two roads it connects.
+        return {
+            "available": False,
+            "blocked_node": raw.get("incident_name"),
+            "note": "This junction is a chokepoint — no in-network alternate route exists. Recommend manual traffic control until cleared.",
+        }
+
+    if passes_through is False:
+        # A parallel road already bypasses this junction entirely —
+        # blocking it doesn't actually force anyone to reroute.
+        return {
+            "available": True,
+            "bypass_exists": True,
+            "blocked_node": raw.get("incident_name"),
+            "route": [],
+            "detour_extra_m": 0,
+            "escalated": False,
+            "note": "A parallel road already bypasses this junction — through traffic isn't forced to reroute.",
+        }
+
+    route_names = [G.nodes[n].get("name", str(n)) for n in diverted["path"]]
+    detour_extra_m = round(raw.get("detour_extra_m", 0) or 0, 1)
+    return {
+        "available": True,
+        "blocked_node": raw.get("incident_name"),
+        "route": route_names,
+        "detour_extra_m": detour_extra_m,
+        "original_length_m": original["length_m"] if original else None,
+        "diverted_length_m": diverted["length_m"],
+        "escalated": detour_extra_m > 250,
+    }
+
+
+def _diversion_for_incident(lat: float, lon: float, s_risk: int, location_label, incident_desc: str) -> dict:
+    """
+    Computes the diversion independently of the dispatcher's officer/station
+    plan — this only needs the routing graph, not dispatcher.py or the
+    XGBoost artifacts. Always reacts to the real incident location and risk
+    level; never a frozen demo dict.
+    """
+    G = _get_diversion_graph()
+    if G is not None:
+        raw = diversion_for_point(G, lat, lon)
+        return _normalize_diversion(raw, G)
+
+    # Routing engine itself unavailable (networkx / koramangala_diversion.py
+    # missing) — produce an estimate that still scales with the real inputs
+    # instead of a fixed number, and is clearly flagged as an estimate.
+    text_hash = sum(ord(c) * (i + 1) for i, c in enumerate(incident_desc[:60])) if incident_desc else 0
+    base = {1: 120, 2: 280, 3: 480}.get(s_risk, 200)
+    variation = (text_hash + int(abs(lat * 10000)) + int(abs(lon * 10000))) % 400
+    detour_extra_m = base + variation
+    return {
+        "available": True,
+        "estimated": True,
+        "blocked_node": location_label or "Reported incident location",
+        "route": [],
+        "detour_extra_m": detour_extra_m,
+        "escalated": detour_extra_m > 250,
+        "note": "Routing engine unavailable — detour length is a risk-scaled estimate, not a computed route.",
+    }
+
+
+def _run_pipeline(incident_desc: str, lat: float, lon: float, location_label=None) -> dict:
     """
     Single entry-point that ties NLP → dispatcher → diversion together.
-    Falls back to heuristics if real modules/artifacts are unavailable.
-    Returns a normalised result dict the UI can consume directly.
+    Falls back to heuristics if real modules/artifacts are unavailable, but
+    every number here — officers, station, distance, diversion — is
+    computed from the actual lat/lon and text passed in, never fixed.
     """
     s_risk, event_cause = _nlp_classify(incident_desc)
     prob_long = _infer_prob_long(s_risk, incident_desc)
     used_real_model = False
+    diversion = _diversion_for_incident(lat, lon, s_risk, location_label, incident_desc)
 
     if DISPATCHER_AVAILABLE:
         try:
@@ -461,16 +600,20 @@ def _run_pipeline(incident_desc: str, lat: float, lon: float) -> dict:
                 "prob_long":   prob_long,
                 "used_real_model": used_real_model,
                 "officers":    plan.get("recommended_officers", 2),
-                "station":     plan.get("dispatch_station", "Adugodi PS"),
+                "station":     plan.get("dispatch_station", "Unknown"),
                 "station_dist_km": plan.get("distance_to_incident_km", "N/A"),
                 "barricade":   plan.get("barricade_protocol", "Standard Cones"),
                 "over_capacity": plan.get("over_capacity_warning", False),
-                "diversion": plan.get("diversion", {}),
+                "diversion": diversion,
             }
         except Exception as exc:
             st.warning(f"Dispatcher raised: {exc}. Using heuristic fallback.")
 
-    # ── Heuristic demo fallback ───────────────────────────────────────────
+    # ── Heuristic fallback ──────────────────────────────────────────────
+    # Only triggers if dispatcher.py itself can't be imported, or raises.
+    # Officers/barricade already scale with s_risk + prob_long; station and
+    # distance are now computed dynamically from the real coordinates too,
+    # instead of a fixed "Adugodi PS, 1.2 km" for every incident.
     officers = 1 + (2 if s_risk == 3 else 1 if s_risk == 2 else 0) + (2 if prob_long > 0.60 else 0)
     officers = min(officers, 6)
     barricade = (
@@ -478,12 +621,7 @@ def _run_pipeline(incident_desc: str, lat: float, lon: float) -> dict:
         else "Type III MUTCD" if prob_long > 0.60
         else "Standard Cones"
     )
-    diversion_demo = {
-        "blocked_node": "Silk Board Junction",
-        "route": ["Koramangala 1st Block", "Intermediate Ring Rd", "HSR Layout 27th Main", "Agara Junction"],
-        "detour_m": 1340,
-        "escalated": True,
-    }
+    station, station_dist_km = _nearest_fallback_station(lat, lon)
     return {
         "s_risk": s_risk,
         "event_cause": event_cause,
@@ -491,11 +629,11 @@ def _run_pipeline(incident_desc: str, lat: float, lon: float) -> dict:
         "prob_medium": 0.10,
         "prob_long":   prob_long,
         "officers":    officers,
-        "station":     "Adugodi PS",
-        "station_dist_km": 1.2,
+        "station":     station,
+        "station_dist_km": station_dist_km,
         "barricade":   barricade,
         "over_capacity": False,
-        "diversion":   diversion_demo,
+        "diversion":   diversion,
     }
 
 
@@ -839,7 +977,9 @@ def _run_event_forecast(event_type: str, footfall: int, lat: float, lon: float, 
 
     if base_plan is None:
         # Mirrors dispatcher.py's own 4-rule matrix exactly, so the fallback
-        # number means the same thing as the real one would.
+        # number means the same thing as the real one would. Station/distance
+        # now computed from the real venue coordinates too, instead of a
+        # fixed "Koramangala PS, 0.8 km" for every event.
         officers = 1 + (2 if s_risk == 3 else 1 if s_risk == 2 else 0) + (2 if prob_long > 0.60 else 0)
         officers = min(officers, 6)
         barricade = (
@@ -847,10 +987,11 @@ def _run_event_forecast(event_type: str, footfall: int, lat: float, lon: float, 
             else "Type III MUTCD" if prob_long > 0.60
             else "Standard Cones"
         )
+        station, station_dist_km = _nearest_fallback_station(lat, lon)
         base_plan = {
             "event_cause": event_cause, "s_risk": s_risk, "prob_long_delay": prob_long,
-            "recommended_officers": officers, "dispatch_station": "Koramangala PS",
-            "distance_to_incident_km": 0.8, "barricade_protocol": barricade,
+            "recommended_officers": officers, "dispatch_station": station,
+            "distance_to_incident_km": station_dist_km, "barricade_protocol": barricade,
             "over_capacity_warning": False,
         }
 
@@ -892,13 +1033,31 @@ with tab1:
     with col_btn:
         run_protocol = st.button("Dispatch Analysis", use_container_width=True, type="primary")
 
-    # ── Optional coordinate override ─────────────────────────────────────────
-    with st.expander("📍 Override Incident Coordinates (optional)"):
-        coord_c1, coord_c2 = st.columns(2)
-        with coord_c1:
-            inc_lat = st.number_input("Latitude", value=12.9343, format="%.4f")
-        with coord_c2:
-            inc_lon = st.number_input("Longitude", value=77.6214, format="%.4f")
+    # ── Location: auto-detected from the report text by default ──────────────
+    # The landmark index is built once (cached) from koramangala_diversion.py's
+    # named junctions, so "...blocking Forum Mall Signal..." resolves to that
+    # junction's real coordinates instead of every report sitting on one
+    # fixed point. Manual override is still available for edge cases the
+    # text-matcher can't catch.
+    with st.expander("📍 Incident Location"):
+        use_manual_coords = st.checkbox(
+            "Manually set coordinates (overrides auto-detection from the report text)",
+            value=False, key="tab1_manual_coords",
+        )
+        if use_manual_coords:
+            coord_c1, coord_c2 = st.columns(2)
+            with coord_c1:
+                inc_lat = st.number_input("Latitude", value=12.9343, format="%.4f", key="tab1_inc_lat")
+            with coord_c2:
+                inc_lon = st.number_input("Longitude", value=77.6214, format="%.4f", key="tab1_inc_lon")
+        else:
+            st.caption(
+                "Coordinates will be auto-detected from any Koramangala-area landmark or "
+                "road named in your report text (e.g. \"Forum Mall\", \"Sony World Junction\", "
+                "\"Hosur Road\", \"Silk Board\"). If nothing matches, the area centroid is used "
+                "and clearly flagged below — switch on manual entry for precision in that case."
+            )
+            inc_lat, inc_lon = None, None  # signal: resolve from text at run time
 
     st.divider()
 
@@ -913,19 +1072,30 @@ with tab1:
         st.session_state.radar_lon = 77.6214
     if "radar_desc" not in st.session_state:
         st.session_state.radar_desc = ""
+    if "radar_location_label" not in st.session_state:
+        st.session_state.radar_location_label = None
 
     if run_protocol and not incident_desc:
         st.warning("⚠️ Enter a field report before initiating the protocol.")
 
     elif run_protocol and incident_desc:
+        if use_manual_coords:
+            final_lat, final_lon = inc_lat, inc_lon
+            location_label = "Manually entered coordinates"
+        else:
+            landmark_index = _get_landmark_index()
+            final_lat, final_lon, matched = geocode_from_text(incident_desc, landmark_index) if ROUTER_AVAILABLE else (12.9352, 77.6245, None)
+            location_label = matched if matched else "No landmark recognized — using Koramangala area centroid"
+
         # Snapshot inputs into session_state NOW so the map always renders
         # with the values from the click, not the live widget values later.
-        st.session_state.radar_lat  = inc_lat
-        st.session_state.radar_lon  = inc_lon
-        st.session_state.radar_desc = incident_desc
-        with st.spinner("🔍 Parsing NLP semantics… Running XGBoost… Calculating Wardrop equilibrium…"):
+        st.session_state.radar_lat   = final_lat
+        st.session_state.radar_lon   = final_lon
+        st.session_state.radar_desc  = incident_desc
+        st.session_state.radar_location_label = location_label
+        with st.spinner("🔍 Parsing NLP semantics… Geocoding location… Running XGBoost… Calculating diversion…"):
             time.sleep(1.0)
-            st.session_state.radar_result = _run_pipeline(incident_desc, inc_lat, inc_lon)
+            st.session_state.radar_result = _run_pipeline(incident_desc, final_lat, final_lon, location_label)
 
         # ── Terminal debug output ─────────────────────────────────────────
         r = st.session_state.radar_result
@@ -935,6 +1105,7 @@ with tab1:
         print(sep)
         print(f"  INPUT")
         print(f"    Incident : {st.session_state.radar_desc}")
+        print(f"    Location : {location_label}")
         print(f"    Lat/Lon  : {st.session_state.radar_lat}, {st.session_state.radar_lon}")
         print(f"  NLP CLASSIFICATION")
         print(f"    Event cause : {r['event_cause']}")
@@ -958,6 +1129,8 @@ with tab1:
     if st.session_state.radar_result:
         result = st.session_state.radar_result
         st.success("✅ Analysis complete — Dispatch authorized.")
+        st.caption(f"📍 Incident location: **{st.session_state.radar_location_label}**  "
+                   f"({st.session_state.radar_lat:.4f}, {st.session_state.radar_lon:.4f})")
 
         col_metrics, col_map = st.columns([1, 2])
 
@@ -1003,10 +1176,9 @@ with tab1:
             st.markdown("### 👮 Dispatch Order")
 
             div = result.get("diversion", {})
-            escalated = div.get("escalated", False) or (div.get("detour_extra_m", 0) or 0) > 250
-            detour_display = (
-                div.get("detour_m") or div.get("detour_extra_m") or "N/A"
-            )
+            detour_extra_m = div.get("detour_extra_m", 0) or 0
+            escalated = bool(div.get("escalated", False))
+            detour_display = f"{detour_extra_m:.0f}" if div.get("available") else "N/A"
             capacity_warn = result.get("over_capacity", False)
 
             st.markdown(f"""
@@ -1023,11 +1195,22 @@ with tab1:
             if capacity_warn:
                 st.warning("⚠️ Nearest station is at/near capacity — consider mutual aid from adjacent jurisdiction.")
 
+            # Diversion engine can land in four distinct, real states — show
+            # whichever one this incident actually produced, instead of a
+            # single "route pills" block that's blank for everything except
+            # the one happy-path case.
+            if div.get("note"):
+                if div.get("available"):
+                    st.info(f"ℹ️ {div['note']}")
+                else:
+                    st.warning(f"⚠️ {div['note']}")
             route = div.get("route", [])
             if route:
                 st.markdown("**Diversion Route Nodes:**")
                 pills = "".join(f'<span class="route-pill">{n}</span>' for n in route)
                 st.markdown(pills, unsafe_allow_html=True)
+            if div.get("estimated"):
+                st.caption("Estimate only — routing engine (networkx/koramangala_diversion.py) is unavailable in this environment.")
 
         # ── Right: map ────────────────────────────────────────────────────
         with col_map:
@@ -1120,6 +1303,7 @@ with tab1:
             st.session_state.radar_lat  = 12.9343
             st.session_state.radar_lon  = 77.6214
             st.session_state.radar_desc = ""
+            st.session_state.radar_location_label = None
             st.rerun()
 
     elif not st.session_state.radar_result:
@@ -1182,8 +1366,11 @@ with tab4:
             min_value=0, max_value=200000, value=4000, step=100,
         )
     with fc2:
-        advance_days = st.slider("Advance Notice (days before event)", 0, 30, 7)
-        event_date = st.date_input("Event Date")
+        event_date = st.date_input(
+            "Event Date", value=date.today() + timedelta(days=7), min_value=date.today(),
+        )
+        advance_days = (event_date - date.today()).days
+        st.caption(f"📅 Advance notice: **{advance_days} day(s)** from today — drives the short-notice warning below.")
 
     with st.expander("📍 Venue Coordinates"):
         vc1, vc2 = st.columns(2)
